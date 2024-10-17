@@ -1,4 +1,5 @@
 import json
+from typing import Any, Callable
 import uuid
 from time import sleep
 from selenium.webdriver.support.ui import WebDriverWait
@@ -45,52 +46,72 @@ class Helper:
 
         if attribute:
             if not element.get_attribute(attribute):
-                raise Exception(f"Attribute '{attribute}' not found in element '{identifier}'.")
-        
+                raise Exception(
+                    f"Attribute '{attribute}' not found in element '{identifier}'."
+                )
+
         return element
 
 
-    def _try_action(self, action, check_str_is_empty=False, attempts=5, wait=1):
+    def _try_action(
+        self,
+        method: Callable,
+        expected_content: str = None,
+        attempts: int = 5,
+        wait: int = 1,  # seconds
+    ) -> Any | None:
         for _ in range(attempts):
             try:
-                out = action()
-                if not check_str_is_empty or out.text.strip() != "":
+                out = method()
+                if out is None:
+                    raise Exception
+
+                text = out.text.strip()
+                if not expected_content or expected_content in text:
                     return out
+
             except Exception:
-                pass
-            sleep(wait)
+                sleep(wait)
 
 
-    def _get_chatgpt_response(self, msg_id: str, code=False) -> str:
+    def _get_chatgpt_response(
+        self, msg_id: str, expect_code=False, expected_content: str = None
+    ) -> EC.WebElement:
         last_prompt = self._wait_for(
             By.XPATH,
             f'//div[contains(text(), "ID: {msg_id}")]',
-            state=EC.presence_of_element_located
+            state=EC.presence_of_element_located,
         )
 
-        response_xpath = (
-            'following::h6[text()="ChatGPT said:"]/following-sibling::div[1]'
-        )
+        response_xpath = 'following::h6[text()="ChatGPT said:"]/following-sibling::div[1]'
 
         response = self._try_action(
-            lambda: last_prompt.find_element(
-                By.XPATH, 
-                f'{response_xpath}//code[@class]' if code else response_xpath
-            )
+            lambda: last_prompt.find_element(By.XPATH, response_xpath),
+            expected_content=expected_content,
         )
-        response_txt: str = response.text
-        return response_txt.strip() if response else ""
+
+        code_xpath = f"{response_xpath}//code[@class]"
+
+        code = self._try_action(
+            lambda: last_prompt.find_element(By.XPATH, code_xpath),
+        )
+
+        return code if expect_code else response
 
 
-    def send_msg(self, prompt: str) -> str:
+    def send_prompt(self, prompt: str, expect_code=False) -> str:
         msg_id = self._generate_message_id()
-        msg = f"{prompt}    ID: {msg_id}"
+        msg = f"{prompt}    ID: {msg_id}".replace("\n", " ")
 
-        input_text = self._wait_for(By.CSS_SELECTOR, INPUT_TEXT, state=EC.presence_of_element_located)
+        input_text = self._wait_for(
+            By.CSS_SELECTOR, INPUT_TEXT, state=EC.presence_of_element_located
+        )
         input_text.click()
         input_text.send_keys(msg)
 
         send_button = self._wait_for(By.XPATH, SEND_BUTTON)
         send_button.click()
 
-        return self._get_chatgpt_response(msg_id, code=True)
+        return self._get_chatgpt_response(
+            msg_id, expect_code, expected_content="CODE COMPLETE"
+        ).text.strip()
