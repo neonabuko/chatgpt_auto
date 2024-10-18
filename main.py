@@ -14,6 +14,8 @@ def main() -> None:
     options = Options()
     options.add_argument("--log-level=3")
     options.add_argument("--disable-extensions")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")
     options.add_argument("--disable-gpu")
     options.add_argument("--blink-settings=imagesEnabled=false")    
     driver = uc.Chrome(options, headless=False, no_sandbox=True)
@@ -25,23 +27,24 @@ def main() -> None:
     driver.get(CHATGPT)
     
     is_error = False
+    expect_code = True
 
     while True:
-        if not is_error:
-            prompt = "CHATGPT_AUTO "
-            prompt += str(input("\n-> You: "))
-
         try:
-            response = helper.send_prompt(prompt, expect_code=True)
+            helper.clean_up_page()
+            
+            if not is_error:
+                prompt = "CHATGPT_AUTO "
+                prompt += str(input("\n-> You: "))            
+            response = helper.send_prompt(prompt, expect_code)
 
-            if "CODE COMPLETE" in response:
-                cmd = response.replace("CODE COMPLETE", "").strip()
+            if expect_code:
+                cmd = response.replace("CODE COMPLETE", "")
                 _print_with(f"-> Command:\n{cmd}")
                 out = subprocess.run(cmd, shell=True, capture_output=True, text=True)
                 
                 if out.stderr != "":
                     out = out.stderr.strip()
-                    prompt = out
                     _print_with(f"-> Error:\n{out}")
                     is_error = True
 
@@ -49,7 +52,9 @@ def main() -> None:
                     out = out.stdout.strip()
                     _print_with(f"-> Output:\n{out}")
                     is_error = False
-            
+                
+                prompt = f"YOUR COMMAND OUTPUT: {out}"
+
             else:
                 _print_with(f"-> ChatGPT: {response}")
 
@@ -60,6 +65,7 @@ def main() -> None:
         except Exception as e:
             exception = str(e)
             _print_with(exception)
+            is_error = False
 
 
 if __name__ == '__main__':
