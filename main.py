@@ -1,73 +1,68 @@
 import subprocess
-from time import sleep
-import undetected_chromedriver as uc
-from selenium.webdriver.chrome.options import Options
+import traceback
+from selenium.common.exceptions import JavascriptException
+from chat_utils import printf
 from constants import *
 from helper import Helper
 
 
-def _print_with(text, char="\n"):
-    print(char + text)
-
-
 def main() -> None:
-    options = Options()
-    options.add_argument("--log-level=3")
-    options.add_argument("--disable-extensions")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--blink-settings=imagesEnabled=false")    
-    driver = uc.Chrome(options, headless=False, no_sandbox=True)
-    helper = Helper(driver)
-
-    driver.get(CHATGPT)
-    helper._handle_cookies(COOKIES)
-    sleep(.5)
-    driver.get(CHATGPT)
+    helper = Helper()
+    helper.load_chatgpt_with_cookies()
     
-    is_error = False
-    expect_code = True
+    is_stderror = False
 
     while True:
         try:
-            helper.clean_up_page()
-            
-            if not is_error:
+            if not is_stderror:
+                helper.clean_up_page()
                 prompt = "CHATGPT_AUTO "
-                prompt += str(input("\n-> You: "))            
-            response = helper.send_prompt(prompt, expect_code)
+                prompt += str(input("\n-> You: "))
 
-            if expect_code:
-                cmd = response.replace("CODE COMPLETE", "")
-                _print_with(f"-> Command:\n{cmd}")
-                out = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            commands = helper.send_prompt(prompt)
+
+            for command in commands:
+                n_commands = len(commands)
+                current = commands.index(command)
+
+                printf(f"-> Command {current+1}/{n_commands}:\n{command}")
+                completed_process = subprocess.run(command, shell=True, capture_output=True, text=True)
                 
-                if out.stderr != "":
-                    out = out.stderr.strip()
-                    _print_with(f"-> Error:\n{out}")
-                    is_error = True
+                is_stderror = completed_process.stderr != ""
+                output = completed_process.stderr if is_stderror else completed_process.stdout
 
-                else:
-                    out = out.stdout.strip()
-                    _print_with(f"-> Output:\n{out}")
-                    is_error = False
-                
-                prompt = f"YOUR COMMAND OUTPUT: {out}"
+                prompt = f"-> Output: {output}"
+                printf(prompt)
 
-            else:
-                _print_with(f"-> ChatGPT: {response}")
+                if is_stderror:
+                    break
+
+        except JavascriptException as j:
+            j = remove_stacktrace(j)
+            printf(f"Javascript Exception: {j}")
+            is_stderror = False
 
         except KeyboardInterrupt:
-            _print_with("Received keyboard interrupt. Quitting...")
+            printf("\nKeyboard Interrupt")
             exit()
 
         except Exception as e:
-            exception = str(e)
-            _print_with(exception)
-            is_error = False
+            e = remove_stacktrace(e)
+            printf(f"Exception: {e}")
+            is_stderror = False
+
+
+def remove_stacktrace(exception: BaseException) -> str:
+    exception = str(exception)
+    stacktrace_start = "Stacktrace:"
+    if stacktrace_start in exception:
+        stacktrace = exception[exception.find(stacktrace_start):]
+        exception = exception.replace(stacktrace, "")
+    else:
+        exception += "\n" + traceback.format_exc()
+
+    return exception
 
 
 if __name__ == '__main__':
     main()
-

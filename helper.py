@@ -1,18 +1,23 @@
 import json
-from typing import Callable
-import uuid
+from typing import Any, Callable, Optional
 from time import sleep
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
-from constants import CHECK_ARTICLES_SCRIPT, CLEAN_UP_SCRIPT, INPUT_TEXT, SEND_BUTTON, WAIT
+from selenium.webdriver.remote.webelement import WebElement
+from undetected_chromedriver import Chrome
+from constants import *
+from custom_exceptions import HelperException
 
 
 class Helper:
-    def __init__(self, driver) -> None:
-        self.driver = driver
-        self.wait = WebDriverWait(driver, WAIT)
-
+    def __init__(self) -> None:
+        options = Options()
+        for option in DRIVER_OPTIONS:
+            options.add_argument(option)
+        self.driver = Chrome(options, headless=False, no_sandbox=True)
+        self.wait = WebDriverWait(self.driver, WAIT)
 
     def _handle_cookies(self, cookies_file: str) -> None:
         with open(cookies_file, "r") as file:
@@ -29,27 +34,20 @@ class Helper:
             except Exception:
                 pass
 
-
-    # TODO Use "ChatGPT is generating a response..." string found on the
-    # webpage as reference
-
-
     def clean_up_page(self, attempts=40, interval=1) -> None:
         previous_count = -1
         for _ in range(attempts):
-            current_count = self.driver.execute_script(CHECK_ARTICLES_SCRIPT)
-            print(f"Current article count: {current_count}")
-            
+            current_count = self.driver.execute_script(COUNT_ARTICLES)
+
             if current_count == previous_count:
-                print("Article count is stable. Cleaning up the page...")
-                self.driver.execute_script(CLEAN_UP_SCRIPT)
+                removed = self.driver.execute_script(CLEAN_UP_PAGE)
+                print(f"Cleaned up {str(removed)} articles")
                 break
-            
+
             previous_count = current_count
             sleep(interval)
         else:
-            print("No stable article count found within the specified attempts.")
-
+            print("Could not clean up page, article count unstable")
 
     def _wait_for(
         self,
@@ -57,76 +55,96 @@ class Helper:
         by=By.XPATH,
         attribute: str = None,
         state=EC.element_to_be_clickable,
-    ) -> EC.WebElement:
+    ) -> WebElement:
 
-        element: EC.WebElement = self.wait.until(state((by, identifier)))
+        element: WebElement = self.wait.until(state((by, identifier)))
 
-        if attribute and element.get_attribute(attribute) is None:
-            raise Exception(f"Attribute '{attribute}' not found in element '{identifier}'.")
+        if attribute is not None and element.get_attribute(attribute) is None:
+            raise Exception(
+                f"Attribute '{attribute}' not found in element '{identifier}'."
+            )
 
         return element
-
 
     def _try_for(
         self,
         method: Callable,
-        expected_content: str = None,
-        attempts: int = 10,
-        wait: int = 1,
-    ) -> EC.WebElement | None:
-        for _ in range(attempts):
+        attempts=10,
+        wait_generate=False,
+        expected_attribute=None,
+        wait_amount=1,
+    ) -> Optional[Any]:
+        header = "_try_for:"
+        for attempt in range(attempts):
             try:
                 out = method()
                 if out is None:
-                    raise Exception
+                    raise HelperException("Out is none")
 
-                text = out.text.strip()
-                if not expected_content or expected_content in text:
-                    return out
+                if type(out) == list and len(out) == 0:
+                    raise HelperException("Out is empty")
 
-            except Exception:
-                pass
+                if expected_attribute is not None:
+                    if out.get_attribute(expected_attribute) is None:
+                        raise HelperException(
+                            f"No such attribute: {expected_attribute}"
+                        )
+                    else:
+                        print(f"{header} Found attribute {expected_attribute}")
 
-            sleep(wait)
+                while (
+                    wait_generate
+                    and GENERATING
+                    in self.driver.find_element(By.XPATH, "/html/body/div[2]").text
+                    or ""
+                ):
+                    print(f"{header} Generating response...")
+                    sleep(1)
 
+                print(f"{header} Returning output...")
+                return out
 
-    def _get_chatgpt_response(
-        self, msg_id: str, expect_code=False, expected_content: str = None
-    ) -> EC.WebElement:
-        last_prompt = self._wait_for(
-            f'//div[contains(text(), "ID: {msg_id}")]',
-            state=EC.presence_of_element_located,
+            except Exception as e:
+                print(str(e))
+                if attempt < attempts:
+                    sleep(wait_amount)
+
+    def _get_chatgpt_commands(self) -> list[str]:
+        messages: list[WebElement] = self._try_for(
+            lambda: self.driver.find_elements(By.TAG_NAME, "article"),
+            wait_generate=True,
+        )
+        
+        last_response = messages[-1]
+
+        codes: list[WebElement] = self._try_for(
+            lambda: last_response.find_elements(By.TAG_NAME, "code"), attempts=2
         )
 
-        response_xpath = 'following::h6[text()="ChatGPT said:"]/following-sibling::div[1]'
+        cmds = []
+        for code in codes:
+            classList = code.get_attribute('class')
+            if classList is not None and 'language-bash' in classList:
+                cmds.append(code.text.strip())
 
-        response = self._try_for(
-            lambda: last_prompt.find_element(By.XPATH, response_xpath),
-            expected_content=expected_content,
-        )
+        return cmds
 
-        code_xpath = f"{response_xpath}//code[@class]"
+    def load_chatgpt_with_cookies(self) -> None:
+        self.driver.get(CHAT)
+        print(f"Got {CHAT}")
+        self._handle_cookies(COOKIES)
+        print("Added cookies")
+        sleep(0.5)
+        self.driver.get(CHAT)
 
-        code = self._try_for(
-            lambda: last_prompt.find_element(By.XPATH, code_xpath),
-        )
+    def send_prompt(self, prompt: str) -> list[str]:
+        msg = prompt.strip().replace("\n", "")
 
-        return code if expect_code else response
-
-
-    def send_prompt(self, prompt: str, expect_code=False) -> str:
-        msg_id = str(uuid.uuid4())
-        msg = f"{prompt} ID: {msg_id}".strip()
-
-        input_text = self._wait_for(
-            INPUT_TEXT, by=By.CSS_SELECTOR, state=EC.presence_of_element_located
-        )
+        input_text = self._wait_for(INPUT_TEXT, state=EC.presence_of_element_located)
         input_text.click()
         input_text.send_keys(msg)
 
         send_button = self._wait_for(SEND_BUTTON)
         send_button.click()
 
-        return self._get_chatgpt_response(
-            msg_id, expect_code, expected_content="CODE COMPLETE"
-        ).text.strip()
+        return self._get_chatgpt_commands()
