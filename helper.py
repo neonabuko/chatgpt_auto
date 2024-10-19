@@ -34,20 +34,11 @@ class Helper:
             except Exception:
                 pass
 
-    def clean_up_page(self, attempts=40, interval=1) -> None:
-        previous_count = -1
-        for _ in range(attempts):
-            current_count = self.driver.execute_script(COUNT_ARTICLES)
 
-            if current_count == previous_count:
-                removed = self.driver.execute_script(CLEAN_UP_PAGE)
-                print(f"Cleaned up {str(removed)} articles")
-                break
+    def clean_up_page(self) -> None:
+        removed = self.driver.execute_script(CLEAN_UP_PAGE)
+        print(f"Cleaned up {removed} messages")
 
-            previous_count = current_count
-            sleep(interval)
-        else:
-            print("Could not clean up page, article count unstable")
 
     def _wait_for(
         self,
@@ -92,14 +83,16 @@ class Helper:
                     else:
                         print(f"{header} Found attribute {expected_attribute}")
 
-                while (
-                    wait_generate
-                    and GENERATING
-                    in self.driver.find_element(By.XPATH, "/html/body/div[2]").text
-                    or ""
-                ):
-                    print(f"{header} Generating response...")
-                    sleep(1)
+                if wait_generate:
+                    generating_found = False
+                    while True:
+                        text = self.driver.find_element(By.XPATH, "/html/body/div[2]").text
+                        if GENERATING not in text and generating_found:
+                            break
+                        if GENERATING in text and not generating_found:
+                            generating_found = True
+                            print(f"{header} Generating response...")
+                        sleep(1)
 
                 print(f"{header} Returning output...")
                 return out

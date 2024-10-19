@@ -1,27 +1,17 @@
-ROOT_DIR = "/home/neo/vscodeProjects/chatgpt_auto"
-COOKIES = ROOT_DIR + "/cookies.json"
-CHAT = "https://chatgpt.com/c/6713eccc-05cc-800b-83ee-67841c2c91d4"
-
-DRIVER_OPTIONS = [
-    "--log-level=3",
-    "--disable-extensions",
-    "--disable-dev-shm-usage",
-    "--no-sandbox",
-    "--disable-gpu",
-    "--blink-settings=imagesEnabled=false",
-]
-
-INPUT_TEXT = '//*[@id="prompt-textarea"]/p'
-SEND_BUTTON = '//button[@aria-label="Send prompt"]'
-WAIT = 30
-GENERATING = "ChatGPT is generating a response..."
-
-
-CLEAN_UP_PAGE = """
 allMessages = await getMessages()
 messageCount = allMessages.querySelectorAll('article').length
 
+let clonedResponse
+let clonedPrompt
+
+if (allMessages) {
+    clonedPrompt = allMessages.cloneNode(true).querySelector('article:nth-last-of-type(2)')
+    clonedResponse = allMessages.cloneNode(true).querySelector('article:last-of-type')
+}
+
 allMessages.innerHTML = ''
+allMessages.appendChild(clonedPrompt)
+allMessages.appendChild(clonedResponse)
 
 let nav = document.querySelector('nav')
 nav.innerHTML = ''
@@ -41,7 +31,7 @@ async function getMessages() {
     let previousCount = -1
     let currentCount = 0
     const attempts = 10
-    const wait = 1000
+    const wait = 2000
 
     for (let i = 0; i < attempts; i++) {
         chatgptSaid.forEach((div) => {
@@ -53,8 +43,10 @@ async function getMessages() {
         let articles = allMessages.querySelectorAll('article')
         currentCount = articles.length
 
-        if (currentCount == previousCount) {
-            return allMessages
+        if (currentCount == previousCount && currentCount > 2) {
+            if (articles[currentCount - 1].textContent.length > 0 && articles[currentCount - 2].textContent.length > 0) {
+                return allMessages
+            }
         }
 
         previousCount = currentCount
@@ -67,5 +59,4 @@ async function getMessages() {
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
-}
-"""
+  }

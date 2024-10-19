@@ -1,4 +1,5 @@
 import subprocess
+from time import sleep
 import traceback
 from selenium.common.exceptions import JavascriptException
 from chat_utils import printf
@@ -31,25 +32,27 @@ def main() -> None:
                 is_stderror = completed_process.stderr != ""
                 output = completed_process.stderr if is_stderror else completed_process.stdout
 
-                prompt = f"-> Output: {output}"
+                prompt = f"-> Output:\n{output}"
                 printf(prompt)
 
                 if is_stderror:
                     break
 
         except JavascriptException as j:
-            j = remove_stacktrace(j)
-            printf(f"Javascript Exception: {j}")
+            j_formatted = remove_stacktrace(j)
+            printf(j_formatted)
             is_stderror = False
+            sleep(1)
 
         except KeyboardInterrupt:
             printf("\nKeyboard Interrupt")
             exit()
 
         except Exception as e:
-            e = remove_stacktrace(e)
-            printf(f"Exception: {e}")
+            e_formatted = remove_stacktrace(e)
+            printf(e_formatted)
             is_stderror = False
+            sleep(1)
 
 
 def remove_stacktrace(exception: BaseException) -> str:
