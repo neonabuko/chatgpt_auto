@@ -1,7 +1,5 @@
 import json
-import os
 import subprocess
-import time
 import traceback
 from typing import Any, Callable, Optional
 from time import sleep
@@ -22,7 +20,7 @@ class Helper:
         for option in DRIVER_OPTIONS:
             options.add_argument(option)
         self.driver = Chrome(options, headless=False, no_sandbox=True)
-        self.wait = WebDriverWait(self.driver, WAIT)
+        self.wait = WebDriverWait(self.driver, WEBDRIVER_WAIT)
 
     def _handle_cookies(self, cookies_file: str) -> None:
         with open(cookies_file, "r") as file:
@@ -40,23 +38,29 @@ class Helper:
                 pass
 
 
-    def clean_up_page(self) -> None:
+    def _assert_stable(self, script, wait=1, max_repeats=5, attempts=20) -> None:
         previous_count = -1
+        current_count = 0
         repeats = 0
-        attempts = 20
         
         for _ in range(attempts):
-            current_count = self.driver.execute_script(COUNT_MESSAGES)
+            current_count = self.driver.execute_script(script)
 
             if previous_count == current_count:
                 repeats += 1
 
-            if repeats > 5:
-                break
+            if repeats > max_repeats:
+                return
 
             previous_count = current_count
-            sleep(1)
-        
+            print(f"Current count: {current_count}", end="\r", flush=True)
+            sleep(wait)
+        else:
+            raise HelperException("Max attempts exceeded.")
+
+
+    def clean_up_page(self) -> None:
+        self._assert_stable(COUNT_MESSAGES)
         removed = self.driver.execute_script(CLEAN_UP_PAGE)
         print(f"Cleaned up {removed} messages")
 
@@ -78,74 +82,28 @@ class Helper:
 
         return element
 
-    def _try_for(
-        self,
-        method: Callable,
-        attempts=10,
-        wait_generate=False,
-        expected_attribute=None,
-        wait_amount=1,
-    ) -> Optional[Any]:
-        header = "_try_for() ->"
-        for attempt in range(attempts):
-            try:
-                out = method()
-                if out is None:
-                    raise HelperException("out is none")
-
-                if type(out) == list and len(out) == 0:
-                    raise HelperException("out is empty")
-
-                if expected_attribute is not None:
-                    if out.get_attribute(expected_attribute) is None:
-                        raise HelperException(
-                            f"No such attribute: {expected_attribute}"
-                        )
-                    else:
-                        print(f"{header} Found attribute {expected_attribute}")
-
-                if wait_generate:
-                    generating_found = False
-                    while True:
-                        text = self.driver.find_element(By.XPATH, "/html/body/div[2]").text
-                        if GENERATING not in text and generating_found:
-                            break
-                        if GENERATING in text and not generating_found:
-                            generating_found = True
-                            print(f"{header} Generating response...")
-                        sleep(1)
-
-                print(f"{header} Returning output...")
-                return out
-
-            except Exception as e:
-                print(str(e))
-                if attempt < attempts:
-                    sleep(wait_amount)
 
     def _get_chatgpt_response(self) -> list[tuple[str, str]]:
-        messages: list[WebElement] = self._try_for(
-            lambda: self.driver.find_elements(By.TAG_NAME, "article")
-        )
+        self._assert_stable(GET_MESSAGE_LENGTH, max_repeats=4)
+        messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
         
         last_response = messages[-1]
 
-        code_elements: list[WebElement] = self._try_for(
-            lambda: last_response.find_elements(By.TAG_NAME, "code"), attempts=2
-        )
-
+        code_elements: list[WebElement] = last_response.find_elements(By.TAG_NAME, "code")
+        
+        code_elements = code_elements or []
         codes: list[tuple[str, str]] = []
         for code in code_elements:
-            class_list = code.get_attribute('class')
-            if class_list is not None:
-                if 'language-bash' in class_list:
-                    bash = code.text.strip()
-                    codes.append(('language-bash', bash))
-                elif 'language-python' in class_list:
-                    python = code.text
-                    codes.append(('language-python', python))
+            class_list = code.get_attribute('class') or ""
+            if 'language-bash' in class_list:
+                bash = code.text.strip()
+                codes.append(('language-bash', bash))
+            elif 'language-python' in class_list:
+                python = code.text
+                codes.append(('language-python', python))
 
         return codes
+
 
     def load_chatgpt_with_cookies(self) -> None:
         self.driver.get(CHAT)
@@ -154,6 +112,7 @@ class Helper:
         print("Added cookies")
         sleep(0.5)
         self.driver.get(CHAT)
+
 
     def send_prompt(self, prompt: str) -> list[tuple[str, str]]:
         msg = prompt.strip().replace("\n", "")
@@ -165,12 +124,11 @@ class Helper:
         send_button = self._wait_for(SEND_BUTTON)
         send_button.click()
 
-        sleep(10)
+        sleep(1)
         return self._get_chatgpt_response()
 
 
     def _run_command(self, command) -> tuple[str, bool]:
-        printf(f"-> Command:\n{command}")
         completed_process = subprocess.run(
             command, shell=True, capture_output=True, text=True
         )
@@ -179,40 +137,46 @@ class Helper:
         output = completed_process.stderr if is_stderror else completed_process.stdout
 
         return output, is_stderror
-
-    
-    def _ensure_unique_filename(self, filename: str) -> str:
-        if os.path.exists(filename):
-            base, ext = os.path.splitext(filename)
-            timestamp = int(time.time())
-            filename = f"{base}_{timestamp}{ext}"
-        return filename
     
 
-    def handle_codes(self, codes: list[tuple[str, str]]) -> str:
+    def handle_codes(self, codes: list[tuple[str, str]]) -> tuple[str, bool]:
         prompt = ""
+        steps = len(codes)
+        is_has_errors = False
+
         for code in codes:
             if code is None:
+                steps -= 1
                 continue
+
+            step = f"Step {codes.index(code)+1}/{steps}"
+
             if code[0] == "language-python":
                 py_code = code[1]
                 filename = py_code[py_code.find("#")+1 : py_code.find("\n")].replace(
                     " ", ""
                 ).strip()
-                filename = self._ensure_unique_filename(filename)
                 try:
                     with open(filename, "w") as file:
                         file.write(py_code)
-                        prompt += f"PYTHON: '{filename}' successfully written to file.\n"
+                        python_output = f"PYTHON: '{filename}' successfully written to file. \n"
+                        prompt += python_output
+                        printf(f"{step}:\n{python_output}")
                 except Exception as e:
                     prompt += f"PYTHON: {filename}: {e}"
 
             elif code[0] == "language-bash":
                 command = code[1]
+                if "pacman" in command:
+                    command += " --noconfirm"
+                printf(f"{step}: {command}")
                 output, is_stderror = self._run_command(command)
-                prompt += f"BASH{(': ' + command) if not is_stderror else ': '} {output}\n"
+                is_has_errors = is_stderror
+                bash_output = f"BASH{(': ' + command) if not is_stderror else ': '} {output} \n"
+                prompt += bash_output
+                printf(bash_output)
 
-        return prompt
+        return prompt, is_has_errors
 
     
     def remove_stacktrace(self, exception: BaseException) -> str:
