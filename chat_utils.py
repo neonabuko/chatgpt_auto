@@ -1,4 +1,4 @@
 
 
-def printf(obj, last_char="\n") -> str:
-    print(str(obj) + last_char)
+def printf(obj, prefix="", suffix="\n") -> str:
+    print(prefix + str(obj) + suffix)

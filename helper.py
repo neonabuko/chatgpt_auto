@@ -1,5 +1,7 @@
 import json
+import queue
 import subprocess
+import threading
 import traceback
 from typing import Any, Callable, Optional
 from time import sleep
@@ -37,12 +39,13 @@ class Helper:
             except Exception:
                 pass
 
-
-    def _assert_stable(self, script, wait=1, max_repeats=5, attempts=20) -> None:
+    def _assert_stable(
+        self, script, element="", wait=1, max_repeats=5, attempts=20
+    ) -> int | None:
         previous_count = -1
         current_count = 0
         repeats = 0
-        
+
         for _ in range(attempts):
             current_count = self.driver.execute_script(script)
 
@@ -50,20 +53,19 @@ class Helper:
                 repeats += 1
 
             if repeats > max_repeats:
-                return
+                return current_count
 
             previous_count = current_count
-            print(f"Current count: {current_count}", end="\r", flush=True)
+            # print(f"Current {element} count: {current_count}", end="\r", flush=True)
             sleep(wait)
         else:
             raise HelperException("Max attempts exceeded.")
 
-
     def clean_up_page(self) -> None:
-        self._assert_stable(COUNT_MESSAGES)
+        self._assert_stable(COUNT_MESSAGES, element="message", wait=0.9, max_repeats=4)
+        print("Cleaning up page")
         removed = self.driver.execute_script(CLEAN_UP_PAGE)
         print(f"Cleaned up {removed} messages")
-
 
     def _wait_for(
         self,
@@ -82,28 +84,28 @@ class Helper:
 
         return element
 
-
-    def _get_chatgpt_response(self) -> list[tuple[str, str]]:
-        self._assert_stable(GET_MESSAGE_LENGTH, max_repeats=4)
+    def _get_chatgpt_response(self) -> list[tuple[str, str]] | str:
+        self._assert_stable(GET_MESSAGE_LENGTH, element="character", wait=0.8, max_repeats=4)
         messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
-        
+
         last_response = messages[-1]
 
-        code_elements: list[WebElement] = last_response.find_elements(By.TAG_NAME, "code")
-        
+        code_elements: list[WebElement] = last_response.find_elements(
+            By.TAG_NAME, "code"
+        )
+
         code_elements = code_elements or []
         codes: list[tuple[str, str]] = []
         for code in code_elements:
-            class_list = code.get_attribute('class') or ""
-            if 'language-bash' in class_list:
+            class_list = code.get_attribute("class") or ""
+            if "language-bash" in class_list:
                 bash = code.text.strip()
-                codes.append(('language-bash', bash))
-            elif 'language-python' in class_list:
+                codes.append(("language-bash", bash))
+            elif "language-python" in class_list:
                 python = code.text
-                codes.append(('language-python', python))
+                codes.append(("language-python", python))
 
-        return codes
-
+        return codes if len(codes) > 0 else last_response.text
 
     def load_chatgpt_with_cookies(self) -> None:
         self.driver.get(CHAT)
@@ -113,8 +115,7 @@ class Helper:
         sleep(0.5)
         self.driver.get(CHAT)
 
-
-    def send_prompt(self, prompt: str) -> list[tuple[str, str]]:
+    def send_prompt(self, prompt: str) -> list[tuple[str, str]] | str:
         msg = prompt.strip().replace("\n", "")
 
         input_text = self._wait_for(INPUT_TEXT, state=EC.presence_of_element_located)
@@ -127,17 +128,44 @@ class Helper:
         sleep(1)
         return self._get_chatgpt_response()
 
-
     def _run_command(self, command) -> tuple[str, bool]:
-        completed_process = subprocess.run(
-            command, shell=True, capture_output=True, text=True
+        process = subprocess.Popen(
+            command,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            universal_newlines=True,
         )
 
-        is_stderror = completed_process.stderr != ""
-        output = completed_process.stderr if is_stderror else completed_process.stdout
+        output = []
+        is_stderror = False
 
-        return output, is_stderror
-    
+        while True:
+            stdout_line = process.stdout.readline()
+            stderr_line = process.stderr.readline()
+
+            if stdout_line:
+                output.append(stdout_line.strip())
+                print(stdout_line.strip())
+            if stderr_line:
+                output.append(stderr_line.strip())
+                is_stderror = True
+                print(stderr_line.strip())
+
+            if process.poll() is not None:
+                break
+
+        stdout, stderr = process.communicate()
+        if stdout:
+            output.append(stdout.strip())
+        if stderr:
+            output.append(stderr.strip())
+            is_stderror = True
+
+        output_str = "\n".join(output)
+
+        return output_str, is_stderror
 
     def handle_codes(self, codes: list[tuple[str, str]]) -> tuple[str, bool]:
         prompt = ""
@@ -153,13 +181,17 @@ class Helper:
 
             if code[0] == "language-python":
                 py_code = code[1]
-                filename = py_code[py_code.find("#")+1 : py_code.find("\n")].replace(
-                    " ", ""
-                ).strip()
+                filename = (
+                    py_code[py_code.find("#") + 1 : py_code.find("\n")]
+                    .replace(" ", "")
+                    .strip()
+                )
                 try:
-                    with open(filename, "w") as file:
+                    with open("py_scripts/" + filename, "w") as file:
                         file.write(py_code)
-                        python_output = f"PYTHON: '{filename}' successfully written to file. \n"
+                        python_output = (
+                            f"PYTHON: '{filename}' successfully written to file. \n"
+                        )
                         prompt += python_output
                         printf(f"{step}:\n{python_output}")
                 except Exception as e:
@@ -172,19 +204,40 @@ class Helper:
                 printf(f"{step}: {command}")
                 output, is_stderror = self._run_command(command)
                 is_has_errors = is_stderror
-                bash_output = f"BASH{(': ' + command) if not is_stderror else ': '} {output} \n"
+                bash_output = (
+                    f"BASH{(': ' + command) if not is_stderror else ': '} {output} \n"
+                )
                 prompt += bash_output
                 printf(bash_output)
 
         return prompt, is_has_errors
 
-    
     def remove_stacktrace(self, exception: BaseException) -> str:
         exception_str = str(exception)
         stacktrace_start = "Stacktrace:"
-        
+
         if stacktrace_start in exception_str:
             return exception_str.split(stacktrace_start, 1)[0]
         else:
             return exception_str + "\n" + traceback.format_exc()
- 
+
+
+    def _content_watch(self, messages_queue) -> None:
+        while True:
+            messages = self.driver.execute_script(COUNT_MESSAGES)
+            messages_queue.put(messages)
+            if self.get_messages_length(messages_queue) > 4:
+                self.clean_up_page()
+            sleep(5)
+
+
+    def start_content_watch(self, messages_queue) -> None:
+        content_watch_thread = threading.Thread(target=self._content_watch, args=(messages_queue, ))
+        content_watch_thread.daemon = True
+        content_watch_thread.start()
+
+
+    def get_messages_length(self, messages_queue) -> Any | None:
+        if not messages_queue.empty():
+            return messages_queue.get()
+        return None

@@ -1,4 +1,5 @@
 import inspect
+import queue
 from time import sleep
 from selenium.common.exceptions import JavascriptException
 from chat_utils import printf
@@ -14,23 +15,27 @@ def main() -> None:
     send_prompt_with_errors = False
     prompt = ""
 
+    messages_queue = queue.Queue()
+    helper.start_content_watch(messages_queue)
     while is_run:
         try:
-            helper.clean_up_page()
             if not send_prompt_with_errors:
                 prompt = PROMPT_HEADER + " " + input("\n-> You: ")
 
-            codes: list[tuple[str, str]] = helper.send_prompt(prompt)
-            codes = codes or []
+            response: list[tuple[str, str]] | str = helper.send_prompt(prompt)
+            response = response or []
             
-            logs, is_has_errors = helper.handle_codes(codes)
+            if isinstance(response, list):
+                logs, is_has_errors = helper.handle_codes(response)
 
-            if is_has_errors:
-                send_prompt_with_errors = str(input("Send errors for analysis? [y/n]: ")) == 'y'
-            else:
-                send_prompt_with_errors = False
+                if is_has_errors:
+                    send_prompt_with_errors = str(input("Send errors for analysis? [y/n]: ")) == 'y'
+                else:
+                    send_prompt_with_errors = False
 
-            prompt = logs.replace("\n", "")
+                prompt = logs.replace("\n", "")
+            elif isinstance(response, str):
+                printf(response, prefix="\n")
 
         except JavascriptException as j:
             j_formatted = helper.remove_stacktrace(j)
