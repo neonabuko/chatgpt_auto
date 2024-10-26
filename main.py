@@ -5,7 +5,9 @@ from selenium.common.exceptions import JavascriptException
 from chat_utils import printf
 from constants import *
 from helper import Helper
+import os
 
+is_cleaning = False
 
 def main() -> None:
     helper = Helper()
@@ -17,10 +19,16 @@ def main() -> None:
 
     messages_queue = queue.Queue()
     helper.start_content_watch(messages_queue)
+    os.system('clear')
+
     while is_run:
         try:
             if not send_prompt_with_errors:
                 prompt = PROMPT_HEADER + " " + input("\n-> You: ")
+
+            while not messages_queue.empty():
+                print("Cleaning up page...", end="\r", flush=True)
+                sleep(.1)
 
             response: list[tuple[str, str]] | str = helper.send_prompt(prompt)
             response = response or []

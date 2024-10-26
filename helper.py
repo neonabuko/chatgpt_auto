@@ -1,9 +1,8 @@
 import json
-import queue
+from queue import Queue
 import subprocess
 import threading
 import traceback
-from typing import Any, Callable, Optional
 from time import sleep
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
@@ -14,6 +13,7 @@ from undetected_chromedriver import Chrome
 from chat_utils import printf
 from constants import *
 from custom_exceptions import HelperException
+from scripts import *
 
 
 class Helper:
@@ -40,7 +40,7 @@ class Helper:
                 pass
 
     def _assert_stable(
-        self, script, element="", wait=1, max_repeats=5, attempts=20
+        self, script, element="", verbose=False, wait=1, max_repeats=5, attempts=20
     ) -> int | None:
         previous_count = -1
         current_count = 0
@@ -53,19 +53,20 @@ class Helper:
                 repeats += 1
 
             if repeats > max_repeats:
+                if verbose:
+                    print(" " * 50, end="\r")
                 return current_count
 
             previous_count = current_count
-            # print(f"Current {element} count: {current_count}", end="\r", flush=True)
+
+            if verbose:
+                print(f"{element} length: {current_count}  ", end="\r", flush=True)
             sleep(wait)
         else:
             raise HelperException("Max attempts exceeded.")
 
     def clean_up_page(self) -> None:
-        self._assert_stable(COUNT_MESSAGES, element="message", wait=0.9, max_repeats=4)
-        print("Cleaning up page")
-        removed = self.driver.execute_script(CLEAN_UP_PAGE)
-        print(f"Cleaned up {removed} messages")
+        self.driver.execute_script(CLEAN_UP_PAGE)
 
     def _wait_for(
         self,
@@ -85,15 +86,18 @@ class Helper:
         return element
 
     def _get_chatgpt_response(self) -> list[tuple[str, str]] | str:
-        self._assert_stable(GET_MESSAGE_LENGTH, element="character", wait=0.8, max_repeats=4)
+        self._assert_stable(GET_RESPONSE_LENGTH, element="Message", wait=0.8, max_repeats=4, verbose=True)
         messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
 
+        if len(messages) == 0:
+            return None
+        
         last_response = messages[-1]
 
         code_elements: list[WebElement] = last_response.find_elements(
             By.TAG_NAME, "code"
         )
-
+        
         code_elements = code_elements or []
         codes: list[tuple[str, str]] = []
         for code in code_elements:
@@ -125,10 +129,10 @@ class Helper:
         send_button = self._wait_for(SEND_BUTTON)
         send_button.click()
 
-        sleep(1)
         return self._get_chatgpt_response()
 
     def _run_command(self, command) -> tuple[str, bool]:
+        command = command.replace("\n", " ")
         process = subprocess.Popen(
             command,
             shell=True,
@@ -138,34 +142,11 @@ class Helper:
             universal_newlines=True,
         )
 
-        output = []
-        is_stderror = False
-
-        while True:
-            stdout_line = process.stdout.readline()
-            stderr_line = process.stderr.readline()
-
-            if stdout_line:
-                output.append(stdout_line.strip())
-                print(stdout_line.strip())
-            if stderr_line:
-                output.append(stderr_line.strip())
-                is_stderror = True
-                print(stderr_line.strip())
-
-            if process.poll() is not None:
-                break
-
         stdout, stderr = process.communicate()
-        if stdout:
-            output.append(stdout.strip())
-        if stderr:
-            output.append(stderr.strip())
-            is_stderror = True
+        is_stderror = bool(stderr)
+        output = stdout if not is_stderror else stderr 
 
-        output_str = "\n".join(output)
-
-        return output_str, is_stderror
+        return output, is_stderror
 
     def handle_codes(self, codes: list[tuple[str, str]]) -> tuple[str, bool]:
         prompt = ""
@@ -187,25 +168,29 @@ class Helper:
                     .strip()
                 )
                 try:
+                    printf(step)
                     with open("py_scripts/" + filename, "w") as file:
                         file.write(py_code)
                         python_output = (
                             f"PYTHON: '{filename}' successfully written to file. \n"
                         )
                         prompt += python_output
-                        printf(f"{step}:\n{python_output}")
+                        printf(python_output)
                 except Exception as e:
-                    prompt += f"PYTHON: {filename}: {e}"
+                    python_output = f"PYTHON: {filename}: {e}"
+                    prompt += python_output
+                    printf(python_output)
+                    is_has_errors = True
 
             elif code[0] == "language-bash":
                 command = code[1]
                 if "pacman" in command:
                     command += " --noconfirm"
-                printf(f"{step}: {command}")
+                printf(f"{step}:\n{command}")
                 output, is_stderror = self._run_command(command)
                 is_has_errors = is_stderror
                 bash_output = (
-                    f"BASH{(': ' + command) if not is_stderror else ': '} {output} \n"
+                    f"BASH{(':' + command) if not is_stderror else ': '} {output} \n"
                 )
                 prompt += bash_output
                 printf(bash_output)
@@ -222,22 +207,25 @@ class Helper:
             return exception_str + "\n" + traceback.format_exc()
 
 
-    def _content_watch(self, messages_queue) -> None:
-        while True:
-            messages = self.driver.execute_script(COUNT_MESSAGES)
-            messages_queue.put(messages)
-            if self.get_messages_length(messages_queue) > 4:
+    def _content_watch(self, messages_queue: Queue, is_run_once=False) -> None:
+        is_run = True
+        messages = 0
+        while is_run:
+            try:
+                self._assert_stable(GET_RESPONSE_LENGTH, wait=1, max_repeats=5)
+                messages = self._assert_stable(COUNT_MESSAGES, wait=1, max_repeats=5)
+            except:
+                continue
+            if messages > 4:
+                messages_queue.put(messages)
                 self.clean_up_page()
-            sleep(5)
+                messages_queue.get()
+                if is_run_once:
+                    is_run = False
+            sleep(60)
 
 
     def start_content_watch(self, messages_queue) -> None:
         content_watch_thread = threading.Thread(target=self._content_watch, args=(messages_queue, ))
         content_watch_thread.daemon = True
         content_watch_thread.start()
-
-
-    def get_messages_length(self, messages_queue) -> Any | None:
-        if not messages_queue.empty():
-            return messages_queue.get()
-        return None
