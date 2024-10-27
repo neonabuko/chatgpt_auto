@@ -58,21 +58,34 @@ lastResponse.querySelectorAll('button').forEach((button) => {
     }
 })
 
-document.querySelector('nav').innerHTML = ''
-document.querySelectorAll('svg').forEach((svg) => {
-    svg.remove()
-})
+let nav = document.querySelector('nav')
+if (nav != null) {
+    nav.innerHTML = ''
+}
 
-document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-    link.remove()
-})
+let svgs = document.querySelectorAll('svg')
+if (svgs != null) {
+    svgs.forEach((svg) => {
+        svg.remove()
+    })
+}
 
-document.querySelectorAll('style').forEach(style => {
-    style.remove()
-})
+let links = document.querySelectorAll('link[rel="stylesheet"]')
+if (links != null) {
+    links.forEach(link => {
+        link.remove()
+    })
+}
 
-document.querySelector('div').innerHTML = ''
-document.querySelector('div').appendChild(lastResponse)
+let styles = document.querySelectorAll('style')
+if (styles != null) {
+    styles.forEach(style => {
+        style.remove()
+    })
+}
+
+allMessages.innerHTML = ''
+allMessages.appendChild(lastResponse)
 
 console.log("Removed", messageCount, "messages")
 return messageCount

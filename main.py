@@ -1,64 +1,39 @@
 import inspect
-import queue
-from time import sleep
 from selenium.common.exceptions import JavascriptException
 from chat_utils import printf
 from constants import *
 from helper import Helper
 import os
 
-is_cleaning = False
 
 def main() -> None:
-    helper = Helper()
-    helper.load_chatgpt_with_cookies()
+    helper = Helper(is_do_cleanup=False)
     is_run = True
-    is_has_errors = False
-    send_prompt_with_errors = False
-    prompt = ""
+    prompt = PROMPT_HEADER + " " + input("\n-> You: ")
 
-    messages_queue = queue.Queue()
-    helper.start_content_watch(messages_queue)
     os.system('clear')
-
     while is_run:
         try:
-            if not send_prompt_with_errors:
-                prompt = PROMPT_HEADER + " " + input("\n-> You: ")
-
-            while not messages_queue.empty():
-                print("Cleaning up page...", end="\r", flush=True)
-                sleep(.1)
-
-            response: list[tuple[str, str]] | str = helper.send_prompt(prompt)
-            response = response or []
+            response = helper.send_prompt(prompt)
             
-            if isinstance(response, list):
-                logs, is_has_errors = helper.handle_codes(response)
+            output = helper.handle_code(response)
 
-                if is_has_errors:
-                    send_prompt_with_errors = str(input("Send errors for analysis? [y/n]: ")) == 'y'
-                else:
-                    send_prompt_with_errors = False
+            print(output)
 
-                prompt = logs.replace("\n", "")
-            elif isinstance(response, str):
-                printf(response, prefix="\n")
+            prompt = output
 
         except JavascriptException as j:
-            j_formatted = helper.remove_stacktrace(j)
-            printf(j_formatted)
-            sleep(1)
+            jf = helper.remove_stacktrace(j)
+            printf(jf)
 
         except KeyboardInterrupt:
             printf("\nKeyboard Interrupt")
             is_run = False
 
         except Exception as e:
-            e_formatted = helper.remove_stacktrace(e)
-            printf(e_formatted)
-            printf(f"Exception occurred at {inspect.stack()[1].function}: {e_formatted}")
-            sleep(1)
+            ef = helper.remove_stacktrace(e)
+            printf(ef)
+            printf(f"Exception: {inspect.stack()[1].function}: {ef}")
 
 
 if __name__ == "__main__":

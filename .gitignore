@@ -1,7 +1,8 @@
 /__pycache__
-/cookies.json
 /venv
 /py_scripts
+/assets
+
+cookies.json
+cookies2.json
 scratch.js
-test.py
-test2.py
