@@ -92,7 +92,7 @@ class Helper:
 
     def _get_chatgpt_response(self) -> list[tuple[str, str]] | str:
         self._assert_stable(
-            GET_RESPONSE_LENGTH, element="Message", wait=0.8, max_repeats=4
+            GET_RESPONSE_LENGTH, element="Message", wait=0.8, max_repeats=6
         )
         messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
 

@@ -9,28 +9,17 @@ from test_constants import RESET
 from pydub import AudioSegment
 
 
-class ResponseData:
-    """Data structure that contains text and id attributes."""
-    def __init__(self, text, id) -> None:
-        self.text = text
-        self.id = id
-
-
 class Manager:
     """Manager with helper functions for tests"""
     def __init__(self) -> None:
-        pass
+        self.queue = multiprocessing.Manager().Queue()
+        self.stop = multiprocessing.Event()
+        self.is_reading_aloud = False
     
     def start_thread(self, target: Callable, args: tuple) -> None:
         t = threading.Thread(target=target, args=args)
         t.daemon = True
         t.start()
-
-    
-    def format_response(self, response: str) -> list:
-        f_response = self.filter_response(response)
-        sentences: list = self.break_down(f_response)
-        return sentences
 
 
     def break_down(self, text: str) -> list:
@@ -43,6 +32,7 @@ class Manager:
             response.replace("ChatGPT said:", "")
             .replace("Memory updated", "")
             .replace("4o mini", "")
+            .replace("Copy code", "")
         )
 
     
@@ -61,10 +51,9 @@ class Manager:
         )
 
 
-    def start_gen_tts(self, sentences: list) -> None:
+    def start_gen_tts(self, sentences: list, pitch_change=0) -> None:
         processes = []
         for audio_id, sentence in enumerate(sentences):
-            pitch_change = -(audio_id % 2)
             p = multiprocessing.Process(target=self.generate_tts, args=(sentence, 'en', audio_id, pitch_change))
             p.start()
             processes.append(p)
@@ -79,8 +68,8 @@ class Manager:
 
         for audio in audios:
             os.system(f"mpv --speed={str(speed)} {audio} > /dev/null 2>&1")
-        
-        os.system(f"rm {TTS}/*")
+            if os.path.exists(audio):
+                os.system(f"rm {audio}")
 
 
     def change_pitch(self, input_file: str, output_file, semitones):
