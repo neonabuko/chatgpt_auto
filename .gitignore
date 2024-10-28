@@ -2,7 +2,9 @@
 /venv
 /py_scripts
 /assets
+/tests
 
+.vscode
 cookies.json
 cookies2.json
 scratch.js
