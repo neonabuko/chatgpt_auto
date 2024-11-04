@@ -1,39 +1,47 @@
 import inspect
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import FileHistory
 from selenium.common.exceptions import JavascriptException
-from chat_utils import printf
+from chat_utils import printf, remove_stacktrace
 from constants import *
-from helper import Helper
+from chatgpt_auto import ChatGPTAuto
 import os
 
 
 def main() -> None:
-    helper = Helper(is_do_cleanup=False)
-    is_run = True
-    prompt = PROMPT_HEADER + " " + input("\n-> You: ")
+    chatgpt_auto = ChatGPTAuto(instance_name="chatgpt_auto", cleanup_once=True)
 
-    os.system('clear')
-    while is_run:
+    prompt_history = FileHistory(PROMPT_HISTORY)
+    session = PromptSession(history=prompt_history)
+
+    is_stderror = False
+    os.system("clear")
+    while True:
         try:
-            response = helper.send_prompt(prompt)
-            
-            output = helper.handle_code(response)
+            if not is_stderror:
+                user_prompt = session.prompt("\n-> ") + PROMPT_FORMULA
 
-            print(output)
+            chat_response = chatgpt_auto.send(user_prompt)
+            terminal_output, is_stderror = chatgpt_auto.handle_code(chat_response)
 
-            prompt = output
+            print(terminal_output)
+            user_prompt = terminal_output
 
-        except JavascriptException as j:
-            jf = helper.remove_stacktrace(j)
-            printf(jf)
+        except (JavascriptException, AssertionError, IOError) as e:
+            printf(remove_stacktrace(e))
+            break
 
         except KeyboardInterrupt:
             printf("\nKeyboard Interrupt")
-            is_run = False
+            break
 
         except Exception as e:
-            ef = helper.remove_stacktrace(e)
+            ef = remove_stacktrace(e)
             printf(ef)
             printf(f"Exception: {inspect.stack()[1].function}: {ef}")
+            break
+    
+    chatgpt_auto.driver.quit()
 
 
 if __name__ == "__main__":

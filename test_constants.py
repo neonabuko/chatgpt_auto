@@ -1,5 +1,8 @@
-RED = "\033[31m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-BLUE = "\033[34m"
-RESET = "\033[0m"
+from typing import Final
+
+
+RED: Final[str] = "\033[31m"
+GREEN: Final[str] = "\033[32m"
+YELLOW: Final[str] = "\033[33m"
+BLUE: Final[str] = "\033[34m"
+RESET: Final[str] = "\033[0m"
