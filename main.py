@@ -9,7 +9,7 @@ import os
 
 
 def main() -> None:
-    chatgpt_auto = ChatGPTAuto(instance_name="chatgpt_auto", cleanup_once=True)
+    chatgpt_auto = ChatGPTAuto(cleanup=False)
 
     prompt_history = FileHistory(PROMPT_HISTORY)
     session = PromptSession(history=prompt_history)
@@ -24,12 +24,10 @@ def main() -> None:
             chat_response = chatgpt_auto.send(user_prompt)
             terminal_output, is_stderror = chatgpt_auto.handle_code(chat_response)
 
-            print(terminal_output)
             user_prompt = terminal_output
 
-        except (JavascriptException, AssertionError, IOError) as e:
+        except (JavascriptException, AssertionError, AttributeError, IOError, KeyError) as e:
             printf(remove_stacktrace(e))
-            break
 
         except KeyboardInterrupt:
             printf("\nKeyboard Interrupt")
@@ -41,6 +39,7 @@ def main() -> None:
             printf(f"Exception: {inspect.stack()[1].function}: {ef}")
             break
     
+    print("Gracefully quitting driver...")
     chatgpt_auto.driver.quit()
 
 

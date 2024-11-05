@@ -1,3 +1,60 @@
 
 # 2024-11-03 21:35:10.800129
 +hey what's up chatGPT
+
+# 2024-11-04 06:03:29.749398
++write a python program that converts letters into their numerical order representation
+
+# 2024-11-04 06:07:01.294357
++write a python program that converts the meters to feet and inches 
+
+# 2024-11-04 06:10:40.363056
++do that one more time
+
+# 2024-11-04 06:17:04.535754
++now make one that converts celsius to fahrenheit. Pay attention to the new rules below:
+
+# 2024-11-04 06:46:48.638249
++do that one more time
+
+# 2024-11-04 06:53:24.404312
++now make one that prints the square roots of numbers from 1 to 10
+
+# 2024-11-04 06:55:13.231274
++again
+
+# 2024-11-04 06:55:51.027313
++what's up chat
+
+# 2024-11-04 06:58:54.358607
++now make one that prints the first 5 number of the fibonacci sequence
+
+# 2024-11-04 06:59:52.387864
++make a python program that tells what time it is now, gracefully formatted
+
+# 2024-11-04 07:13:26.465924
++one that prints the power of 2 of the numbers from 1 to 20
+
+# 2024-11-04 07:14:10.211735
++make a python program that converts numbers to letters
+
+# 2024-11-04 07:25:46.083621
++make a python program that turns numbers into characters of the alphabet
+
+# 2024-11-04 07:26:20.889432
++hello
+
+# 2024-11-04 07:31:14.647611
++python program that prints a string
+
+# 2024-11-04 07:31:47.235245
++hello
+
+# 2024-11-04 07:34:54.656599
++hey
+
+# 2024-11-04 07:42:54.914399
++make a python program that turns numbers into characters of the alphabet
+
+# 2024-11-04 07:43:37.541836
++python program that prints a string

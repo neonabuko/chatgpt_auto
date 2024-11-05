@@ -40,9 +40,13 @@ PROMPT_FORMULA: Final[str] = """
 
 
 - Steps
-    1. Send pip command to install the dependencies you need
+    1. Send pip command to install the dependencies (only if you don't think I already have them)
     2. Add file name to first line of the code as a comment, e.g.: # main.py, then write code
-    3. Provide command to run
+
+- Constraints
+    1. Never move on to a next step if there are errors
+    2. All code in my computer must be saved in /home/neo/vscodeProjects/chatgpt_auto/py_scripts
+    3. You are not allowed to add comments or explanations to the code other than the file name at the top
 
 - Example
     ```bash
@@ -50,7 +54,7 @@ PROMPT_FORMULA: Final[str] = """
     ```
     
     ```python
-    # main.py
+    # program_name.py
     import ...
     
     def main():
@@ -59,15 +63,6 @@ PROMPT_FORMULA: Final[str] = """
     if __name__ == '__main__':
         main()
     ```
-
-    ```bash
-    python main.py
-    ```
-
-- Constraints
-    1. Never move on to a next step if there are errors
-    2. All code in my computer is located in /home/neo/vscodeProjects/chatgpt_auto/py_scripts
-    3. You are not allowed to add comments or explanations to the code other than the file name at the top
 """
 
 PROMPT_HISTORY: Final[str] = ".prompt_history.txt"
