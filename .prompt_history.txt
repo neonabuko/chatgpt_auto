@@ -58,3 +58,57 @@
 
 # 2024-11-04 07:43:37.541836
 +python program that prints a string
+
+# 2024-11-05 13:06:34.853004
++write a python program that prints pi with its first 10 decimal digits
+
+# 2024-11-05 13:08:20.423577
++write a python program that prints pi with its first 10 digits
+
+# 2024-11-05 13:10:10.523419
++do that again
+
+# 2024-11-05 13:10:53.948478
++write a python program that converts liters to ounces
+
+# 2024-11-05 13:11:40.775103
++thank you
+
+# 2024-11-05 13:20:15.144133
++python program that prints a string
+
+# 2024-11-05 13:21:08.761751
++python program that prints a string. Just show me the code
+
+# 2024-11-05 13:41:14.968591
++write a python program that prints pi with its first 10 digits
+
+# 2024-11-05 13:41:42.037591
++python program that prints a string. Just show me the code
+
+# 2024-11-05 13:42:09.150774
++write a python program that converts liters to ounces
+
+# 2024-11-05 13:42:27.647346
++one that prints the power of 2 of the numbers from 1 to 20
+
+# 2024-11-05 13:42:42.761577
++now make one that prints the square roots of numbers from 1 to 10
+
+# 2024-11-05 13:43:08.523172
++hey what's up chatGPT
+
+# 2024-11-05 14:05:33.229421
++good afternoon!
+
+# 2024-11-05 14:06:35.276109
++why are you speaking tupiniquim
+
+# 2024-11-05 14:07:15.266159
++write a simple GUI using python. 
+
+# 2024-11-05 14:09:51.350237
++now add music playback controls, read the songs I have under /home/neo/Music and let me play them
+
+# 2024-11-05 14:12:41.676979
++code I'm sorry, do that one more time

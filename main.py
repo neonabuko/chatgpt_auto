@@ -1,4 +1,6 @@
 import inspect
+from urllib3.exceptions import ProtocolError
+from http.client import RemoteDisconnected
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from selenium.common.exceptions import JavascriptException
@@ -19,15 +21,30 @@ def main() -> None:
     while True:
         try:
             if not is_stderror:
-                user_prompt = session.prompt("\n-> ") + PROMPT_FORMULA
+                user_prompt: str = session.prompt("\n-> ")
+                if user_prompt.startswith("code"):
+                    user_prompt = user_prompt.replace("code", "") + PROMPT_FORMULA
 
             chat_response = chatgpt_auto.send(user_prompt)
-            terminal_output, is_stderror = chatgpt_auto.handle_code(chat_response)
+            if isinstance(chat_response, str): 
+                print(f"ChatGPT said: {chat_response}")
+                continue
+            cmd_output, is_stderror = chatgpt_auto.handle_code(chat_response)
 
-            user_prompt = terminal_output
+            user_prompt = cmd_output
 
-        except (JavascriptException, AssertionError, AttributeError, IOError, KeyError) as e:
+        except (
+            JavascriptException,
+            AssertionError,
+            AttributeError,
+            IOError,
+            KeyError,
+        ) as e:
             printf(remove_stacktrace(e))
+
+        except (ProtocolError, RemoteDisconnected):
+            print("Remote end closed connection without response. Reinitializing ChatGPTAuto...")
+            chatgpt_auto = ChatGPTAuto(cleanup=False)
 
         except KeyboardInterrupt:
             printf("\nKeyboard Interrupt")
@@ -38,7 +55,7 @@ def main() -> None:
             printf(ef)
             printf(f"Exception: {inspect.stack()[1].function}: {ef}")
             break
-    
+
     print("Gracefully quitting driver...")
     chatgpt_auto.driver.quit()
 

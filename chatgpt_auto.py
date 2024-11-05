@@ -1,7 +1,8 @@
 import json
-from multiprocessing import Manager, Process
+from multiprocessing import Event, Process
 import subprocess
 from time import sleep
+from typing import Callable
 from selenium.webdriver.chrome.options import Options
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
@@ -20,7 +21,7 @@ class ChatGPTAuto:
     Parameters
     -
     initialize : bool
-        For tests only. When `False`, instantiates the class without the driver and its variables
+        For tests only. When `False`, instantiates the class without the driver and its __init__() variables
     cleanup : bool
         Whether to perform page cleanups or not
     cleanup_once : bool
@@ -53,20 +54,22 @@ class ChatGPTAuto:
         for option in DRIVER_OPTIONS:
             options.add_argument(option)
         self.driver = Chrome(options, headless=False, no_sandbox=True)
-        self.driver.set_page_load_timeout(self._page_load_timeout)
+        self.driver.set_page_load_timeout(10)
         self.driver.get(self._url)
-        self.driver.delete_all_cookies()
         self._handle_cookies(cookies)
         sleep(0.5)
         self.driver.get(self._url)
 
         self._wait = WebDriverWait(self.driver, WEBDRIVER_WAIT)
-        self._page_load_timeout = 10
-        self._queue = Manager().Queue()
-        self._is_new_chat = False
+        self._busy = Event()
 
         if cleanup:
-            self._start_monitor_and_cleanup_process(cleanup_once=cleanup_once)
+            self._start_process(
+                target=self._monitor_and_cleanup_page,
+                args=(cleanup_once,),
+                name="Cleanup",
+                join=cleanup_once,
+            )
 
     def send(self, prompt: str) -> list[tuple[str, str]] | str:
         """
@@ -84,11 +87,11 @@ class ChatGPTAuto:
             - Returns a string if the response contains plain text only.
         """
 
-        if prompt is None or prompt == "":
+        if not isinstance(prompt, str) or not prompt.strip():
             raise ChatGPTAutoException("Prompt is empty.")
 
-        self._wait_queue_empty(.5)
-        self._queue.put("sending prompt")
+        self._wait_while_busy(0.5)
+        self._busy.set()
 
         input_text = self._wait.until(
             EC.presence_of_element_located((By.XPATH, PROMPT_TEXTAREA))
@@ -100,11 +103,11 @@ class ChatGPTAuto:
             EC.element_to_be_clickable((By.XPATH, SEND_PROMPT_BUTTON))
         )
         send_button.click()
-        self._clear_queue()
+        self._busy.clear()
 
-        self._start_monitor_total_text_length()
-        response = self._get_last_chatgpt_response()
-        return response
+        self._start_process(target=self._monitor_total_text_length, name="Monitor text")
+
+        return self._get_last_chatgpt_response()
 
     def handle_code(self, code: list[tuple[str, str]]) -> tuple[str, bool]:
         """
@@ -123,7 +126,7 @@ class ChatGPTAuto:
                 - `is_stderror` (bool): True if any command produces an error; False otherwise.
         """
 
-        output, is_stderr = "", bool(False)
+        cmd_output, is_stderr = "", bool(False)
 
         for code in code:
             language = code[0]
@@ -133,7 +136,8 @@ class ChatGPTAuto:
                 with open(f"{PY_SCRIPTS}/{filename}", "w") as file:
                     file.write(py_code)
                     output = f"'{filename}' saved."
-                print(output)
+                    print(output)
+                cmd_output += f" {output}"
 
             elif language == "language-bash":
                 command = code[1]
@@ -155,8 +159,9 @@ class ChatGPTAuto:
 
                 output = f"{command}: {stdout.strip()}"
                 print(output)
+                cmd_output += f" {output}"
 
-        return output, is_stderr
+        return cmd_output, is_stderr
 
     def _handle_cookies(self, cookies_path: str) -> None:
         if cookies_path is None:
@@ -169,7 +174,6 @@ class ChatGPTAuto:
                 del cookie["sameSite"]
             if "expiry" in cookie:
                 cookie["expiry"] = int(cookie["expiry"])
-
             try:
                 self.driver.add_cookie(cookie)
             except:
@@ -177,9 +181,9 @@ class ChatGPTAuto:
 
     def _get_last_chatgpt_response(self) -> list[tuple[str, str]] | str:
         print("Awaiting response")
-        self._queue.put("awaiting response")
+        self._busy.set()
         self._get_stable_output_from_script(
-            GET_LAST_RESPONSE_LENGTH, wait=0.8, coincidences=6
+            GET_LAST_RESPONSE_LENGTH, wait=0.5, coincidences=6
         )
         messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
         if messages is None or len(messages) == 0:
@@ -202,18 +206,18 @@ class ChatGPTAuto:
                 python = code.text
                 code_found.append(("language-python", python))
 
-        self._clear_queue()
+        self._busy.clear()
 
         return code_found if len(code_found) > 0 else last_response.text
 
     def _get_stable_output_from_script(
-        self, script, wait=1, coincidences=5, attempts=20
+        self, script, wait=1, coincidences=5, max_attempts=50
     ) -> int | None:
         previous_count = -1
         current_count = 0
         repeats = 0
 
-        for _ in range(attempts):
+        for _ in range(max_attempts):
             current_count = self.driver.execute_script(script)
 
             if previous_count == current_count:
@@ -227,45 +231,42 @@ class ChatGPTAuto:
         else:
             raise ChatGPTAutoException("Max attempts exceeded.")
 
-    def _start_monitor_and_cleanup_process(self, cleanup_once=False) -> None:
-        p = Process(target=self._monitor_and_cleanup_page, args=(cleanup_once,))
-        p.daemon = True
-        p.name = "Monitor and Cleanup"
-        p.start()
-        if cleanup_once:
-            p.join()
-
-    def _start_monitor_total_text_length(self) -> None:
-        p = Process(target=self._monitor_total_text_length)
-        p.daemon = True
-        p.name = "Monitor Text Length"
-        p.start()
+    def _start_process(
+        self, target: Callable, args: tuple = (), name: str = "process", join=False
+    ) -> Process:
+        process = Process(target=target, args=args)
+        process.daemon = True
+        process.name = name
+        process.start()
+        if join:
+            process.join()
+        return process
 
     def _monitor_total_text_length(self) -> None:
         text_length: int = self._get_stable_output_from_script(
             GET_ALL_TEXT_LENGTH, wait=0.5, coincidences=5
         )
 
-        if self._is_new_chat:
+        if text_length > 100_000:
+            self._wait_while_busy(1)
+            self._busy.set()
+            print("Starting new chat")
+            self._wait.until(
+                EC.element_to_be_clickable((By.XPATH, NEW_CHAT_BUTTON))
+            ).click()
+            self._busy.clear()
+
+        if (
+            self.driver.current_url != self._url
+            and self.driver.current_url != "https://chatgpt.com/?model=auto"
+        ):
             self._url = self.driver.current_url
             with open(URLS, "r") as file:
                 urls: dict = json.load(file)
                 urls[self.instance_name] = self._url
 
             with open(URLS, "w") as file:
-                json.dump(urls, file, indent=4)
-
-        if text_length > 100_000:
-            self._wait_queue_empty(1)
-            self._queue.put("starting new chat")
-            print("Starting new chat")
-            self._wait.until(
-                EC.element_to_be_clickable((By.XPATH, NEW_CHAT_BUTTON))
-            ).click()
-            self._is_new_chat = True
-            self._clear_queue()
-        else:
-            self._is_new_chat = False
+                json.dump(urls, file, indent=4)            
 
     def _monitor_and_cleanup_page(self, cleanup_once=False) -> None:
         while True:
@@ -283,23 +284,16 @@ class ChatGPTAuto:
                     print("Timeout when refreshing")
                     break
                 continue
-            if self._is_queue_empty():
-                print("Cleaning up")
-                self._queue.put("cleaning up")
-                self.driver.execute_script(CLEAN_UP_PAGE)
-                self._clear_queue()
-                if cleanup_once:
-                    break
-                sleep(30)
-            sleep(1)
 
-    def _clear_queue(self) -> None:
-        while not self._is_queue_empty():
-            self._queue.get()
+            self._wait_while_busy(1)
+            print("Cleaning up")
+            self._busy.set()
+            self.driver.execute_script(CLEAN_UP_PAGE)
+            self._busy.clear()
+            if cleanup_once:
+                break
+            sleep(30)
 
-    def _is_queue_empty(self) -> bool:
-        return self._queue.qsize() == 0
-
-    def _wait_queue_empty(self, wait: int) -> None:
-        while not self._is_queue_empty():
-            sleep(wait)
+    def _wait_while_busy(self, interval: int) -> None:
+        while self._busy.is_set():
+            sleep(interval)
