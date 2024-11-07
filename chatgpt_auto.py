@@ -1,17 +1,19 @@
 import json
-from multiprocessing import Event, Process
 import subprocess
+
 from time import sleep
+import time
 from typing import Callable
+from undetected_chromedriver import Chrome
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
-from undetected_chromedriver import Chrome
+from selenium.common.exceptions import TimeoutException
+from custom_exceptions import ChatGPTAutoException, ChatGPTAutoTimeoutException
+from multiprocessing import Event, Process
 from constants import *
-from custom_exceptions import ChatGPTAutoException
 from scripts import *
 
 
@@ -21,7 +23,7 @@ class ChatGPTAuto:
     Parameters
     -
     initialize : bool
-        For tests only. When `False`, instantiates the class without the driver and its __init__() variables
+        For tests only. When `False`, instantiates the class with instance_name only
     cleanup : bool
         Whether to perform page cleanups or not
     cleanup_once : bool
@@ -38,7 +40,7 @@ class ChatGPTAuto:
         cleanup: bool = True,
         cleanup_once: bool = False,
         instance_name: str = "chat_1",
-        cookies: str = COOKIES,
+        cookies: str = Paths.COOKIES,
     ) -> None:
 
         self.instance_name = instance_name
@@ -46,12 +48,12 @@ class ChatGPTAuto:
         if not initialize:
             return
 
-        with open(URLS, "r") as urls_file:
+        with open(Paths.URLS, "r") as urls_file:
             urls: dict = json.load(urls_file)
             self._url = urls.get(instance_name)
 
         options = Options()
-        for option in DRIVER_OPTIONS:
+        for option in Variables.DRIVER_OPTIONS:
             options.add_argument(option)
         self.driver = Chrome(options, headless=False, no_sandbox=True)
         self.driver.set_page_load_timeout(10)
@@ -60,7 +62,7 @@ class ChatGPTAuto:
         sleep(0.5)
         self.driver.get(self._url)
 
-        self._wait = WebDriverWait(self.driver, WEBDRIVER_WAIT)
+        self._wait = WebDriverWait(self.driver, Variables.WEBDRIVER_WAIT)
         self._busy = Event()
 
         if cleanup:
@@ -93,21 +95,18 @@ class ChatGPTAuto:
         self._wait_while_busy(0.5)
         self._busy.set()
 
-        input_text = self._wait.until(
-            EC.presence_of_element_located((By.XPATH, PROMPT_TEXTAREA))
-        )
-        input_text.click()
-        input_text.send_keys(prompt.strip().replace("\n", ""))
+        self._wait.until(
+            EC.presence_of_element_located((By.XPATH, WebElements.PROMPT_TEXTAREA))
+        ).send_keys(prompt.strip().replace("\n", " "))
 
-        send_button = self._wait.until(
-            EC.element_to_be_clickable((By.XPATH, SEND_PROMPT_BUTTON))
-        )
-        send_button.click()
+        self._wait.until(
+            EC.element_to_be_clickable((By.XPATH, WebElements.SEND_PROMPT_BUTTON))
+        ).click()
         self._busy.clear()
 
         self._start_process(target=self._monitor_total_text_length, name="Monitor text")
 
-        return self._get_last_chatgpt_response()
+        return self._get_chatgpt_response()
 
     def handle_code(self, code: list[tuple[str, str]]) -> tuple[str, bool]:
         """
@@ -120,10 +119,9 @@ class ChatGPTAuto:
 
         Returns
         -------
-        tuple
-            A tuple containing:
-                - `output` (str): Combined output of all commands and the status of Python file saves.
-                - `is_stderror` (bool): True if any command produces an error; False otherwise.
+        A tuple containing:
+            - `output` (str): Combined output of all commands and the status of Python file saves.
+            - `is_stderror` (bool): True if any command produces an error; False otherwise.
         """
 
         cmd_output, is_stderr = "", bool(False)
@@ -131,13 +129,15 @@ class ChatGPTAuto:
         for code in code:
             language = code[0]
             if language == "language-python":
-                py_code = code[1]
-                filename = py_code[py_code.find("#") + 1 : py_code.find("\n")].strip()
-                with open(f"{PY_SCRIPTS}/{filename}", "w") as file:
-                    file.write(py_code)
+                py_script = code[1]
+                filename = py_script[
+                    py_script.find("#") + 1 : py_script.find("\n")
+                ].strip()
+                with open(f"{Paths.PY_SCRIPTS}/{filename}", "w") as file:
+                    file.write(py_script)
                     output = f"'{filename}' saved."
                     print(output)
-                cmd_output += f" {output}"
+                    cmd_output += f" {output}"
 
             elif language == "language-bash":
                 command = code[1]
@@ -179,21 +179,25 @@ class ChatGPTAuto:
             except:
                 pass
 
-    def _get_last_chatgpt_response(self) -> list[tuple[str, str]] | str:
+    def _get_chatgpt_response(self) -> list[tuple[str, str]] | str:
         print("Awaiting response")
         self._busy.set()
-        self._get_stable_output_from_script(
-            GET_LAST_RESPONSE_LENGTH, wait=0.5, coincidences=6
-        )
+
+        while self.driver.execute_script(Scripts.IS_GENERATING_RESPONSE):
+            sleep(0.5)
         messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
         if messages is None or len(messages) == 0:
-            raise ChatGPTAutoException("No messages found in current chat")
+            raise ChatGPTAutoException("Found no messages in current chat")
+
+        self._busy.clear()
+
         print("Retrieving response")
         last_response = messages[-1]
 
         code_elements: list[WebElement] = (
             last_response.find_elements(By.TAG_NAME, "code") or []
         )
+
         code_found = []
         for code in code_elements:
             class_list = code.get_attribute("class")
@@ -206,30 +210,29 @@ class ChatGPTAuto:
                 python = code.text
                 code_found.append(("language-python", python))
 
-        self._busy.clear()
-
         return code_found if len(code_found) > 0 else last_response.text
 
     def _get_stable_output_from_script(
-        self, script, wait=1, coincidences=5, max_attempts=50
-    ) -> int | None:
+        self, script, interval=1, timeout=30, coincidences=5
+    ) -> int:
         previous_count = -1
-        current_count = 0
-        repeats = 0
+        current_count, repeats = 0, 0
+        start = time.time()
+        while repeats < coincidences:
+            elapsed_time = time.time() - start
 
-        for _ in range(max_attempts):
+            if elapsed_time > timeout:
+                raise ChatGPTAutoTimeoutException(timeout=timeout)
+
             current_count = self.driver.execute_script(script)
 
             if previous_count == current_count:
                 repeats += 1
 
-            if repeats > coincidences:
-                return current_count
-
             previous_count = current_count
-            sleep(wait)
-        else:
-            raise ChatGPTAutoException("Max attempts exceeded.")
+            sleep(interval)
+
+        return current_count if isinstance(current_count, int) else -1
 
     def _start_process(
         self, target: Callable, args: tuple = (), name: str = "process", join=False
@@ -244,7 +247,7 @@ class ChatGPTAuto:
 
     def _monitor_total_text_length(self) -> None:
         text_length: int = self._get_stable_output_from_script(
-            GET_ALL_TEXT_LENGTH, wait=0.5, coincidences=5
+            Scripts.GET_ALL_TEXT_LENGTH, interval=0.5, coincidences=5
         )
 
         if text_length > 100_000:
@@ -252,7 +255,7 @@ class ChatGPTAuto:
             self._busy.set()
             print("Starting new chat")
             self._wait.until(
-                EC.element_to_be_clickable((By.XPATH, NEW_CHAT_BUTTON))
+                EC.element_to_be_clickable((By.XPATH, WebElements.NEW_CHAT_BUTTON))
             ).click()
             self._busy.clear()
 
@@ -261,21 +264,19 @@ class ChatGPTAuto:
             and self.driver.current_url != "https://chatgpt.com/?model=auto"
         ):
             self._url = self.driver.current_url
-            with open(URLS, "r") as file:
+            with open(Paths.URLS, "r") as file:
                 urls: dict = json.load(file)
                 urls[self.instance_name] = self._url
 
-            with open(URLS, "w") as file:
-                json.dump(urls, file, indent=4)            
+            with open(Paths.URLS, "w") as file:
+                json.dump(urls, file, indent=4)
 
     def _monitor_and_cleanup_page(self, cleanup_once=False) -> None:
+        is_generating_response = False
         while True:
             try:
-                self._get_stable_output_from_script(
-                    COUNT_MESSAGES, wait=0.5, coincidences=3
-                )
-                self._get_stable_output_from_script(
-                    GET_LAST_RESPONSE_LENGTH, wait=0.5, coincidences=3
+                is_generating_response = self._get_stable_output_from_script(
+                    Scripts.IS_GENERATING_RESPONSE, interval=0.5, coincidences=3
                 )
             except:
                 try:
@@ -285,14 +286,15 @@ class ChatGPTAuto:
                     break
                 continue
 
-            self._wait_while_busy(1)
-            print("Cleaning up")
-            self._busy.set()
-            self.driver.execute_script(CLEAN_UP_PAGE)
-            self._busy.clear()
-            if cleanup_once:
-                break
-            sleep(30)
+            if not is_generating_response:
+                self._wait_while_busy(1)
+                print("Cleaning up")
+                self._busy.set()
+                self.driver.execute_script(Scripts.CLEAN_UP_PAGE)
+                self._busy.clear()
+                if cleanup_once:
+                    break
+                sleep(30)
 
     def _wait_while_busy(self, interval: int) -> None:
         while self._busy.is_set():

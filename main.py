@@ -13,7 +13,7 @@ import os
 def main() -> None:
     chatgpt_auto = ChatGPTAuto(cleanup=False)
 
-    prompt_history = FileHistory(PROMPT_HISTORY)
+    prompt_history = FileHistory(Paths.PROMPT_HISTORY)
     session = PromptSession(history=prompt_history)
 
     is_stderror = False
@@ -23,7 +23,7 @@ def main() -> None:
             if not is_stderror:
                 user_prompt: str = session.prompt("\n-> ")
                 if user_prompt.startswith("code"):
-                    user_prompt = user_prompt.replace("code", "") + PROMPT_FORMULA
+                    user_prompt = user_prompt.replace("code", "") + Variables.PROMPT_FORMULA
 
             chat_response = chatgpt_auto.send(user_prompt)
             if isinstance(chat_response, str): 
