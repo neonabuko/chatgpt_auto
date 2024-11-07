@@ -17,11 +17,12 @@ def main() -> None:
     session = PromptSession(history=prompt_history)
 
     is_stderror = False
+    user_prompt = ""
     os.system("clear")
     while True:
         try:
             if not is_stderror:
-                user_prompt: str = session.prompt("\n-> ")
+                user_prompt = session.prompt("\n-> ")
                 if user_prompt.startswith("code"):
                     user_prompt = user_prompt.replace("code", "") + Variables.PROMPT_FORMULA
 

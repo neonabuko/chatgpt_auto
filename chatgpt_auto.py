@@ -49,8 +49,8 @@ class ChatGPTAuto:
             return
 
         with open(Paths.URLS, "r") as urls_file:
-            urls: dict = json.load(urls_file)
-            self._url = urls.get(instance_name)
+            urls: dict[str, str] = json.load(urls_file)
+            self._url = urls[instance_name]
 
         options = Options()
         for option in Variables.DRIVER_OPTIONS:
@@ -108,7 +108,7 @@ class ChatGPTAuto:
 
         return self._get_chatgpt_response()
 
-    def handle_code(self, code: list[tuple[str, str]]) -> tuple[str, bool]:
+    def handle_code(self, code_list: list[tuple[str, str]]) -> tuple[str, bool]:
         """
         Processes and writes Python code to files in the `/py_scripts` directory, then executes specified bash commands.
 
@@ -126,7 +126,7 @@ class ChatGPTAuto:
 
         cmd_output, is_stderr = "", bool(False)
 
-        for code in code:
+        for code in code_list:
             language = code[0]
             if language == "language-python":
                 py_script = code[1]
@@ -213,7 +213,11 @@ class ChatGPTAuto:
         return code_found if len(code_found) > 0 else last_response.text
 
     def _get_stable_output_from_script(
-        self, script, interval=1, timeout=30, coincidences=5
+        self,
+        script: str,
+        interval: int | float = 1,
+        timeout: int | float = 30,
+        coincidences: int = 5,
     ) -> int:
         previous_count = -1
         current_count, repeats = 0, 0
@@ -265,13 +269,13 @@ class ChatGPTAuto:
         ):
             self._url = self.driver.current_url
             with open(Paths.URLS, "r") as file:
-                urls: dict = json.load(file)
+                urls: dict[str, str] = json.load(file)
                 urls[self.instance_name] = self._url
 
             with open(Paths.URLS, "w") as file:
                 json.dump(urls, file, indent=4)
 
-    def _monitor_and_cleanup_page(self, cleanup_once=False) -> None:
+    def _monitor_and_cleanup_page(self, cleanup_once: bool = False) -> None:
         is_generating_response = False
         while True:
             try:
@@ -296,6 +300,6 @@ class ChatGPTAuto:
                     break
                 sleep(30)
 
-    def _wait_while_busy(self, interval: int) -> None:
+    def _wait_while_busy(self, interval: int | float) -> None:
         while self._busy.is_set():
             sleep(interval)
