@@ -1,12 +1,11 @@
 from typing import Final
-
+from pathlib import Path
 
 class Paths:
-    ROOT_DIR: Final[str] =      "/home/neo/vscodeProjects/chatgpt_auto"
+    ROOT_DIR: Final[str] = str(Path.cwd() / "chatgpt_auto" / "chatgpt_auto")
     COOKIES: Final[str] =       f"{ROOT_DIR}/cookies.json"
     COOKIES_2: Final[str] =     f"{ROOT_DIR}/cookies2.json"
     URLS: Final[str] =          f"{ROOT_DIR}/urls.json"
-    USER_DATA: Final[str] =     "/home/neo/.config/google-chrome"
     TTS: Final[str] =           f"{ROOT_DIR}/assets/tts"
     PY_SCRIPTS: Final[str] =    "py_scripts"
     PROMPT_HISTORY: Final[str] = ".prompt_history.txt"
