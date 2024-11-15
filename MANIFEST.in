@@ -3,5 +3,5 @@ include chatgpt_auto/cookies.json
 include chatgpt_auto/cookies2.json
 include chatgpt_auto/.prompt_history.txt
 include chatgpt_auto/.client_history.txt
-include chatgpt_auto/assets/tts
-include chatgpt_auto/py_scripts
+recursive-include chatgpt_auto/assets/tts *
+recursive-include chatgpt_auto/py_scripts *
