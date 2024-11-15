@@ -1,1 +1,1 @@
-from .chatgpt_auto import *
+from chatgpt_auto import *
