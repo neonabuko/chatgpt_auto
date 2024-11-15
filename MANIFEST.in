@@ -1,0 +1,7 @@
+include chatgpt_auto/urls.jon
+include chatgpt_auto/cookies.json
+include chatgpt_auto/cookies2.json
+include chatgpt_auto/.prompt_history.txt
+include chatgpt_auto/.client_history.txt
+include chatgpt_auto/assets/tts
+include chatgpt_auto/py_scripts

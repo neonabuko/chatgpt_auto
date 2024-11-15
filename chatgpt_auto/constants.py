@@ -1,15 +1,14 @@
 from typing import Final
-from pathlib import Path
+import pkg_resources
 
 class Paths:
-    ROOT_DIR: Final[str] = str(Path.cwd() / "chatgpt_auto" / "chatgpt_auto")
-    COOKIES: Final[str] =       f"{ROOT_DIR}/cookies.json"
-    COOKIES_2: Final[str] =     f"{ROOT_DIR}/cookies2.json"
-    URLS: Final[str] =          f"{ROOT_DIR}/urls.json"
-    TTS: Final[str] =           f"{ROOT_DIR}/assets/tts"
-    PY_SCRIPTS: Final[str] =    "py_scripts"
-    PROMPT_HISTORY: Final[str] = ".prompt_history.txt"
-    CLIENT_HISTORY: Final[str] = ".client_history.txt"
+    URLS = pkg_resources.resource_filename("chatgpt_auto", "urls.json")
+    COOKIES = pkg_resources.resource_filename("chatgpt_auto", "cookies.json")
+    COOKIES_2 = pkg_resources.resource_filename("chatgpt_auto", "cookies2.json")
+    TTS = pkg_resources.resource_filename("chatgpt_auto", "assets/tts")
+    PY_SCRIPTS = pkg_resources.resource_filename("chatgpt_auto", "py_scripts")
+    PROMPT_HISTORY = pkg_resources.resource_filename("chatgpt_auto", ".prompt_history.txt")
+    CLIENT_HISTORY = pkg_resources.resource_filename("chatgpt_auto", ".client_history.txt")
 
 
 class WebElements:
