@@ -10,6 +10,7 @@ class Paths:
     TTS: Final[str] =           f"{ROOT_DIR}/assets/tts"
     PY_SCRIPTS: Final[str] =    "py_scripts"
     PROMPT_HISTORY: Final[str] = ".prompt_history.txt"
+    CLIENT_HISTORY: Final[str] = ".client_history.txt"
 
 
 class WebElements:
@@ -66,3 +67,13 @@ class Variables:
             main()
         ```
     """
+
+    LABELS: Final[list[str]] = ["ChatGPT said:", "Memory updated", "4o mini", "Copy code"]
+
+
+class Color:
+    RED: Final[str] = "\033[31m"
+    GREEN: Final[str] = "\033[32m"
+    YELLOW: Final[str] = "\033[33m"
+    BLUE: Final[str] = "\033[34m"
+    RESET: Final[str] = "\033[0m"

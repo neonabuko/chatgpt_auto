@@ -43,11 +43,11 @@ class Scripts:
         lastResponse = articles[articles.length - 1]
     }
 
-    const allDescendants = lastResponse.querySelectorAll('*')
+    let allDescendants = lastResponse.querySelectorAll('*')
 
     for (let el of allDescendants) {
-        const computedStyle = window.getComputedStyle(el, '::after')
-        const afterContent = computedStyle.getPropertyValue('content')
+        let computedStyle = window.getComputedStyle(el, '::after')
+        let afterContent = computedStyle.getPropertyValue('content')
         
         if (afterContent && afterContent !== 'none') {
             return true

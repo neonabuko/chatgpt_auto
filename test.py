@@ -1,23 +1,20 @@
 from multiprocessing.connection import Listener
 from selenium.common.exceptions import JavascriptException, TimeoutException
-from constants import CHAT_1, CHAT_2
 from custom_exceptions import ChatGPTAutoException
 from chatgpt_auto import ChatGPTAuto
-from test_constants import *
 from chatgpt_yapper import ChatGPTYapper
 
 
-def main():
+def main() -> None:
     manager = ChatGPTYapper()
-    chat_1 = ChatGPTAuto(CHAT_1, cookies=None, instance_name="Chat 1", cleanup_once=True)
-    chat_2 = ChatGPTAuto(CHAT_2, cookies=None, instance_name="Chat 2", cleanup_once=True)
-    talk_thread = None
+    chat_1 = ChatGPTAuto(instance_name="default", initialize=True, cookies=None, cleanup=False)
+    chat_2 = ChatGPTAuto(instance_name="default", initialize=True, cookies=None, cleanup=False)
+    conversation_process = None
     listener = Listener(address=("localhost", 6000), authkey=b"secret")
-    is_run = True
 
-    while is_run:
+    while True:
+        conn = listener.accept()
         try:
-            conn = listener.accept()
             command: str = conn.recv()
 
             if command == "quit":
@@ -32,13 +29,13 @@ def main():
                     manager.stop.clear()
 
                 initial_prompt = command.replace("start_conversation ", "", 1)
-                talk_thread = manager.start_conversation_process(
+                conversation_process = manager.start_conversation_process(
                     chat_1, chat_2, initial_prompt
                 )
                 conn.send("Started conversation")
 
             elif command == "stop_conversation":
-                if talk_thread is not None:
+                if conversation_process is not None:
                     manager.stop.set()
                     while not manager.queue.empty():
                         manager.queue.get()
@@ -46,25 +43,26 @@ def main():
                 else:
                     conn.send("No ongoing conversation.")
             else:
+                available_commands = ["quit", "is_alive", "start_conversation", "stop_conversation"]
                 conn.send(
-                    "Unrecognized command. Try one of these:\nquit\nis_alive\nstart_conversation\nstop_conversation"
+                    f"Unrecognized command. Try one of:{available_commands}"
                 )
 
             conn.close()
         except KeyboardInterrupt:
             manager.stop.set()
-            is_run = False
+            exit()
 
-        except ChatGPTAutoException as h:
-            conn.send((str(h)[:250]))
+        # except ChatGPTAutoException as h:
+        #     conn.send((str(h)[:250]))
 
-        except JavascriptException as j:
-            conn.send((str(j)[:250]))
+        # except JavascriptException as j:
+        #     conn.send((str(j)[:250]))
 
-        except TimeoutException as t:
-            conn.send(str(t))
-        except Exception as e:
-            conn.send((str(e)[:250]))
+        # except TimeoutException as t:
+        #     conn.send(str(t))
+        # except Exception as e:
+        #     conn.send((str(e)[:250]))
 
     listener.close()
     chat_1.driver.quit()

@@ -22,7 +22,7 @@ def main() -> None:
     while True:
         try:
             if not is_stderror:
-                user_prompt = session.prompt("\n-> ")
+                user_prompt = session.prompt("\n>>> ")
                 if user_prompt.startswith("code"):
                     user_prompt = user_prompt.replace("code", "") + Variables.PROMPT_FORMULA
 
@@ -40,6 +40,7 @@ def main() -> None:
             AttributeError,
             IOError,
             KeyError,
+            TimeoutError
         ) as e:
             printf(remove_stacktrace(e))
 

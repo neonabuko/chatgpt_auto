@@ -1,0 +1,6 @@
+
+# 2024-11-12 23:06:37.748855
++start_conversation talk about brazilian politics
+
+# 2024-11-13 00:00:01.501748
++start_conversation talk about brazilian politics in 20 words

@@ -1,9 +1,10 @@
 import json
-import subprocess
+import os
+import time
 
 from time import sleep
-import time
 from typing import Callable
+import warnings
 from undetected_chromedriver import Chrome
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
@@ -15,6 +16,7 @@ from custom_exceptions import ChatGPTAutoException, ChatGPTAutoTimeoutException
 from multiprocessing import Event, Process
 from constants import *
 from scripts import *
+from icecream import ic
 
 
 class ChatGPTAuto:
@@ -40,7 +42,7 @@ class ChatGPTAuto:
         cleanup: bool = True,
         cleanup_once: bool = False,
         instance_name: str = "chat_1",
-        cookies: str = Paths.COOKIES,
+        cookies: str | None = Paths.COOKIES,
     ) -> None:
 
         self.instance_name = instance_name
@@ -49,8 +51,8 @@ class ChatGPTAuto:
             return
 
         with open(Paths.URLS, "r") as urls_file:
-            urls: dict[str, str] = json.load(urls_file)
-            self._url = urls[instance_name]
+            urls: dict = json.load(urls_file)
+            self._url = urls[instance_name]["url"]
 
         options = Options()
         for option in Variables.DRIVER_OPTIONS:
@@ -61,6 +63,7 @@ class ChatGPTAuto:
         self._handle_cookies(cookies)
         sleep(0.5)
         self.driver.get(self._url)
+        self._url = self.driver.current_url
 
         self._wait = WebDriverWait(self.driver, Variables.WEBDRIVER_WAIT)
         self._busy = Event()
@@ -136,34 +139,52 @@ class ChatGPTAuto:
                 with open(f"{Paths.PY_SCRIPTS}/{filename}", "w") as file:
                     file.write(py_script)
                     output = f"'{filename}' saved."
-                    print(output)
+                    ic(output)
                     cmd_output += f" {output}"
 
             elif language == "language-bash":
-                command = code[1]
-                process = subprocess.Popen(
-                    command.strip(),
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    universal_newlines=True,
+                is_running_command = Event()
+                timeout_trigger = Event()
+
+                def _check_command_run_timeout(timeout: int) -> None:
+                    start_time = time.time()
+                    while time.time() - start_time < timeout:
+                        time.sleep(0.1)
+                    if is_running_command.is_set():
+                        os.system(f"pkill -f '{command}'")
+                        timeout_trigger.set()
+                        ic(f"{command} timed out after {timeout} seconds")
+
+                command = input("> ")
+                cmd_output = ""
+                output_file = "output.txt"
+
+                is_running_command.set()
+
+                self._start_process(
+                    target=_check_command_run_timeout,
+                    args=(30,),
+                    name="Check command run timeout",
                 )
 
-                stdout, stderr = process.communicate()
-                is_stderr = bool(stderr)
-                stdout = stdout if not is_stderr else stderr
+                os.system(f"{command.strip()} > {output_file}")
+                is_running_command.clear()
+
+                with open(output_file, "r") as file:
+                    stdout = file.read()
 
                 if "Requirement already satisfied" in stdout:
                     stdout = stdout[: stdout.find("\n")]
 
-                output = f"{command}: {stdout.strip()}"
-                print(output)
-                cmd_output += f" {output}"
+                if not timeout_trigger.is_set():
+                    cmd_output = f"{command}: {stdout.strip()}"
+                    ic(cmd_output)
+
+                os.remove(output_file)
 
         return cmd_output, is_stderr
 
-    def _handle_cookies(self, cookies_path: str) -> None:
+    def _handle_cookies(self, cookies_path: str | None) -> None:
         if cookies_path is None:
             return
         with open(cookies_path, "r") as file:
@@ -180,19 +201,54 @@ class ChatGPTAuto:
                 pass
 
     def _get_chatgpt_response(self) -> list[tuple[str, str]] | str:
-        print("Awaiting response")
-        self._busy.set()
+        with open(Paths.URLS, "r") as file:
+            urls = json.load(file)
+            last_response_data_testid = urls[self.instance_name][
+                "last_response_data_testid"
+            ]
 
-        while self.driver.execute_script(Scripts.IS_GENERATING_RESPONSE):
-            sleep(0.5)
-        messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
-        if messages is None or len(messages) == 0:
-            raise ChatGPTAutoException("Found no messages in current chat")
+        new_data_testid = last_response_data_testid
+        last_response = WebElement("", "")
+        
+        ic("Waiting for response")
+        while new_data_testid == last_response_data_testid:
+            self._busy.set()
 
-        self._busy.clear()
+            while self.driver.execute_script(Scripts.IS_GENERATING_RESPONSE):
+                sleep(0.4)
 
-        print("Retrieving response")
-        last_response = messages[-1]
+            messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
+            if not messages:
+                raise ChatGPTAutoException("Found no messages in current chat")
+
+            self._busy.clear()
+
+            if not isinstance(messages, list):
+                ic(f"! messages is not a list")
+                continue
+
+            last_response = messages[-1]
+
+            if last_response == last_response_data_testid:
+                ic(f"! last_response is equal to last_response_data_testid: {last_response}")
+                continue
+            
+            new_data_testid = last_response.get_attribute("data-testid")
+            try:
+                int(new_data_testid) # type: ignore
+                ic(f"! new_data_testid is an int: {new_data_testid}")
+                new_data_testid = last_response_data_testid
+            except ValueError:
+                sleep(.1)
+                continue
+            
+        with open(Paths.URLS, 'r') as file:
+            urls = json.load(file)
+            urls[self.instance_name]["last_response_data_testid"] = new_data_testid
+        with open(Paths.URLS, 'w') as file:
+            json.dump(urls, file, indent=4)
+
+        return last_response.text
 
         code_elements: list[WebElement] = (
             last_response.find_elements(By.TAG_NAME, "code") or []
@@ -210,6 +266,7 @@ class ChatGPTAuto:
                 python = code.text
                 code_found.append(("language-python", python))
 
+        ic("Retrieving response")
         return code_found if len(code_found) > 0 else last_response.text
 
     def _get_stable_output_from_script(
@@ -257,7 +314,7 @@ class ChatGPTAuto:
         if text_length > 100_000:
             self._wait_while_busy(1)
             self._busy.set()
-            print("Starting new chat")
+            ic("Starting new chat")
             self._wait.until(
                 EC.element_to_be_clickable((By.XPATH, WebElements.NEW_CHAT_BUTTON))
             ).click()
@@ -269,8 +326,8 @@ class ChatGPTAuto:
         ):
             self._url = self.driver.current_url
             with open(Paths.URLS, "r") as file:
-                urls: dict[str, str] = json.load(file)
-                urls[self.instance_name] = self._url
+                urls = json.load(file)
+                urls[self.instance_name]["url"] = self._url
 
             with open(Paths.URLS, "w") as file:
                 json.dump(urls, file, indent=4)
@@ -286,13 +343,13 @@ class ChatGPTAuto:
                 try:
                     self.driver.refresh()
                 except TimeoutException:
-                    print("Timeout when refreshing")
+                    ic("Timeout when refreshing")
                     break
                 continue
 
             if not is_generating_response:
                 self._wait_while_busy(1)
-                print("Cleaning up")
+                ic("Cleaning up")
                 self._busy.set()
                 self.driver.execute_script(Scripts.CLEAN_UP_PAGE)
                 self._busy.clear()
