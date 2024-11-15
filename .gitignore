@@ -1,11 +1,8 @@
-/__pycache__
-/venv
-/py_scripts
+__pycache__
+venv
+py_scripts/*
 
-
-/assets/tts/*
 .vscode
 cookies.json
 cookies2.json
-scratch.js
 .pytest_cache
