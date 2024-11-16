@@ -3,6 +3,8 @@ venv
 py_scripts/*
 
 .vscode
+.prompt_history.txt
+.client_history.txt
 cookies.json
 cookies2.json
 .pytest_cache
