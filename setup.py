@@ -2,7 +2,10 @@ from setuptools import setup, find_packages
 
 setup(
     name="chatgpt_auto",
-    version="0.1",  
+    version="0.1",
+    package_data={
+        "chatgpt_auto": ["*.json"],
+    },    
     packages=find_packages(),  
     install_requires=[],
     author="Neo",  
