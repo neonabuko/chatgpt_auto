@@ -4,8 +4,8 @@ from http.client import RemoteDisconnected
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from selenium.common.exceptions import JavascriptException
-from chat_utils import printf, remove_stacktrace
-from constants import *
+from chatgpt_auto.chat_utils import printf, remove_stacktrace
+from chatgpt_auto.constants import *
 from chatgpt_auto import ChatGPTAuto
 import os
 

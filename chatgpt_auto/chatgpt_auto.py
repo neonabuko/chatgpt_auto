@@ -12,10 +12,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
-from custom_exceptions import ChatGPTAutoException, ChatGPTAutoTimeoutException
+from chatgpt_auto.custom_exceptions import ChatGPTAutoException, ChatGPTAutoTimeoutException
 from multiprocessing import Event, Process
-from constants import *
-from scripts import *
+from chatgpt_auto.constants import *
+from chatgpt_auto.scripts import *
 from icecream import ic
 
 

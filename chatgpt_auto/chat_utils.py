@@ -1,6 +1,6 @@
 import traceback
 from typing import Any
-from constants import Color
+from chatgpt_auto.constants import Color
 
 
 def color_print(text: str, color: str) -> None:

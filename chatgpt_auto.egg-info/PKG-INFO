@@ -1,0 +1,27 @@
+Metadata-Version: 2.1
+Name: chatgpt_auto
+Version: 0.1
+Summary: Interact with chatgpt using Selenium
+Home-page: https://github.com/neonabuko/chatgpt_auto.git
+Author: Neo
+Author-email: neonabukodonosor@gmail.com
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Description-Content-Type: text/markdown
+
+# ChatGPT AUTO
+
+### Run ChatGPT commands directly on terminal
+
+### Example
+
+>#### You:
+>Show what's in my current directory
+>
+>#### ChatGPT: 
+>ls
+>
+>#### Output:
+>my_file1.txt  
+>my_file2.mp3
