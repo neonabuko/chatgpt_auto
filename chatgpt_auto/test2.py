@@ -1,23 +1,13 @@
-from time import perf_counter
-from chatgpt_auto import ChatGPTAuto
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from constants import Paths
+from time import sleep
 from icecream import ic
+from prompt_toolkit import prompt
 
-chat = ChatGPTAuto(cleanup=False)
-
-prompt_history = FileHistory(Paths.PROMPT_HISTORY)
-session = PromptSession(history=prompt_history)
-
+prompt(">>> ")
+n = 0
 while True:
-    prompt = session.prompt(">>> ")
+    text = "hey "
+    print("\033[2K\r" + text + str(n), end="", flush=True)
+    text += text
+    n += 1
+    sleep(0.5)
     
-    start = perf_counter()
-    response = chat.send(prompt)
-    end = perf_counter()
-    
-    time_taken = f"{(end - start):.2f}"
-
-    ic(response)
-    ic(time_taken)

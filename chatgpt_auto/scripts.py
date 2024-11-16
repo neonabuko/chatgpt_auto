@@ -25,22 +25,9 @@ class Scripts:
     """
 
     IS_GENERATING_RESPONSE: Final[str] = """
-    let chatgptSaid = document.querySelectorAll('h6')
-    let allMessages
-
-    for (let div of chatgptSaid) {
-        if (div.textContent.includes("ChatGPT said:")) {
-            allMessages = div.closest('div')
-            break
-        }
-    }
-
-    let lastResponse
-    if (typeof(allMessages) == 'undefined') {
+    let lastResponse = document.querySelector('article:last-of-type')
+    if (!lastResponse) {
         return false
-    } else {
-        let articles = allMessages.querySelectorAll('article')
-        lastResponse = articles[articles.length - 1]
     }
 
     let allDescendants = lastResponse.querySelectorAll('*')

@@ -208,66 +208,119 @@ class ChatGPTAuto:
             ]
 
         new_data_testid = last_response_data_testid
-        last_response = WebElement("", "")
+        messages = []
+        last_response = None
+        start_time = time.time()
+        timeout = 30  # seconds
         
         ic("Waiting for response")
-        while new_data_testid == last_response_data_testid:
+        while new_data_testid == last_response_data_testid and time.time() - start_time < timeout:
             self._busy.set()
 
+            ic("Checking if still generating...")
             while self.driver.execute_script(Scripts.IS_GENERATING_RESPONSE):
-                sleep(0.4)
+                ic("Still generating response...")
+                sleep(0.3)
+                          
+            ic("Generation complete or not started")
 
-            messages: list[WebElement] = self.driver.find_elements(By.TAG_NAME, "article")
-            if not messages:
-                raise ChatGPTAutoException("Found no messages in current chat")
-
-            self._busy.clear()
-
-            if not isinstance(messages, list):
-                ic(f"! messages is not a list")
-                continue
-
-            last_response = messages[-1]
-
-            if last_response == last_response_data_testid:
-                ic(f"! last_response is equal to last_response_data_testid: {last_response}")
-                continue
-            
-            new_data_testid = last_response.get_attribute("data-testid")
             try:
-                int(new_data_testid) # type: ignore
-                ic(f"! new_data_testid is an int: {new_data_testid}")
-                new_data_testid = last_response_data_testid
-            except ValueError:
-                sleep(.1)
+                ic("Finding message elements...")
+                messages = self.driver.find_elements(By.TAG_NAME, "article")
+                if not messages:
+                    ic("No messages found, retrying...")
+                    sleep(0.5)
+                    continue
+
+                if not isinstance(messages, list):
+                    ic("Messages is not a list, retrying...")
+                    sleep(0.5)
+                    continue
+
+                ic(f"Found {len(messages)} messages")
+                last_response = messages[-1]
+                if not isinstance(last_response, WebElement):
+                    ic("Last response is not a WebElement, retrying...")
+                    sleep(0.5)
+                    continue
+
+                ic("Getting data-testid...")
+                new_data_testid = last_response.get_attribute("data-testid")
+                ic(f"Current data-testid: {new_data_testid}, Last data-testid: {last_response_data_testid}")
+                
+                if not new_data_testid:
+                    ic("No data-testid found, retrying...")
+                    sleep(0.5)
+                    continue
+
+                if not new_data_testid.startswith("conversation-turn-"):
+                    ic(f"Invalid data-testid format: {new_data_testid}, retrying...")
+                    sleep(0.5)
+                    continue
+
+                current_turn = int(new_data_testid.split("-")[-1])
+                last_turn = int(last_response_data_testid.split("-")[-1])
+                
+                ic(f"Comparing turns - Current: {current_turn}, Last: {last_turn}")
+                if current_turn <= last_turn:
+                    ic(f"Current turn {current_turn} is not newer than last turn {last_turn}, retrying...")
+                    sleep(0.5)
+                    continue
+                
+                if not last_response.text.strip():
+                    ic("Response is empty, waiting for content...")
+                    sleep(0.5)
+                    continue
+
+                ic(last_response.text.strip())
+                ic("Found newer turn, breaking loop")
+                break
+
+            except Exception as e:
+                ic(f"Error getting response: {str(e)}")
+                ic(f"Exception type: {type(e)}")
+                sleep(0.5)
                 continue
-            
+            finally:
+                self._busy.clear()
+
+        if time.time() - start_time >= timeout:
+            raise ChatGPTAutoException(f"Timeout after {timeout} seconds while waiting for response")
+
+        if not last_response:
+            raise ChatGPTAutoException("Failed to get valid response")
+
         with open(Paths.URLS, 'r') as file:
             urls = json.load(file)
             urls[self.instance_name]["last_response_data_testid"] = new_data_testid
         with open(Paths.URLS, 'w') as file:
             json.dump(urls, file, indent=4)
 
-        return last_response.text
-
-        code_elements: list[WebElement] = (
-            last_response.find_elements(By.TAG_NAME, "code") or []
-        )
-
+        code_elements = last_response.find_elements(By.TAG_NAME, "code") or []
         code_found = []
+
+        if not isinstance(code_elements, list):
+            ic("Code elements is not a list")
+            return last_response.text
+        
         for code in code_elements:
-            class_list = code.get_attribute("class")
-            if class_list is None:
-                break
-            if "language-bash" in class_list:
-                bash = code.text.strip()
-                code_found.append(("language-bash", bash))
-            elif "language-python" in class_list:
-                python = code.text
-                code_found.append(("language-python", python))
+            try:
+                class_list = code.get_attribute("class")
+                if not class_list:
+                    continue
+                    
+                if "language-bash" in class_list:
+                    bash = code.text.strip()
+                    code_found.append(("language-bash", bash))
+                elif "language-python" in class_list:
+                    python = code.text
+                    code_found.append(("language-python", python))
+            except Exception as e:
+                ic(f"Error processing code element: {str(e)}")
+                continue
 
         ic("Retrieving response")
-        return code_found if len(code_found) > 0 else last_response.text
+        return code_found if code_found else last_response.text
 
     def _get_stable_output_from_script(
         self,

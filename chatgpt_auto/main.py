@@ -30,9 +30,9 @@ def main() -> None:
             if isinstance(chat_response, str): 
                 print(f"ChatGPT said: {chat_response}")
                 continue
-            cmd_output, is_stderror = chatgpt_auto.handle_code(chat_response)
+            # cmd_output, is_stderror = chatgpt_auto.handle_code(chat_response)
 
-            user_prompt = cmd_output
+            # user_prompt = cmd_output
 
         except (
             JavascriptException,
