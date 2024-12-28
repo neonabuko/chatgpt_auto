@@ -12,7 +12,10 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.common.exceptions import TimeoutException
-from chatgpt_auto.custom_exceptions import ChatGPTAutoException, ChatGPTAutoTimeoutException
+from chatgpt_auto.custom_exceptions import (
+    ChatGPTAutoException,
+    ChatGPTAutoTimeoutException,
+)
 from multiprocessing import Event, Process
 from chatgpt_auto.constants import *
 from chatgpt_auto.scripts import *
@@ -139,7 +142,7 @@ class ChatGPTAuto:
                 with open(f"{Paths.PY_SCRIPTS}/{filename}", "w") as file:
                     file.write(py_script)
                     output = f"'{filename}' saved."
-                    ic(output)
+
                     cmd_output += f" {output}"
 
             elif language == "language-bash":
@@ -153,7 +156,6 @@ class ChatGPTAuto:
                     if is_running_command.is_set():
                         os.system(f"pkill -f '{command}'")
                         timeout_trigger.set()
-                        ic(f"{command} timed out after {timeout} seconds")
 
                 command = input("> ")
                 cmd_output = ""
@@ -178,7 +180,6 @@ class ChatGPTAuto:
 
                 if not timeout_trigger.is_set():
                     cmd_output = f"{command}: {stdout.strip()}"
-                    ic(cmd_output)
 
                 os.remove(output_file)
 
@@ -212,103 +213,75 @@ class ChatGPTAuto:
         last_response = None
         start_time = time.time()
         timeout = 30  # seconds
-        
-        ic("Waiting for response")
-        while new_data_testid == last_response_data_testid and time.time() - start_time < timeout:
+
+        while (
+            new_data_testid == last_response_data_testid
+            and time.time() - start_time < timeout
+        ):
             self._busy.set()
-
-            ic("Checking if still generating...")
             while self.driver.execute_script(Scripts.IS_GENERATING_RESPONSE):
-                ic("Still generating response...")
                 sleep(0.3)
-                          
-            ic("Generation complete or not started")
-
             try:
-                ic("Finding message elements...")
                 messages = self.driver.find_elements(By.TAG_NAME, "article")
                 if not messages:
-                    ic("No messages found, retrying...")
                     sleep(0.5)
                     continue
-
                 if not isinstance(messages, list):
-                    ic("Messages is not a list, retrying...")
                     sleep(0.5)
                     continue
-
-                ic(f"Found {len(messages)} messages")
                 last_response = messages[-1]
                 if not isinstance(last_response, WebElement):
-                    ic("Last response is not a WebElement, retrying...")
                     sleep(0.5)
                     continue
-
-                ic("Getting data-testid...")
                 new_data_testid = last_response.get_attribute("data-testid")
-                ic(f"Current data-testid: {new_data_testid}, Last data-testid: {last_response_data_testid}")
-                
                 if not new_data_testid:
-                    ic("No data-testid found, retrying...")
                     sleep(0.5)
                     continue
-
                 if not new_data_testid.startswith("conversation-turn-"):
-                    ic(f"Invalid data-testid format: {new_data_testid}, retrying...")
                     sleep(0.5)
                     continue
 
                 current_turn = int(new_data_testid.split("-")[-1])
                 last_turn = int(last_response_data_testid.split("-")[-1])
-                
-                ic(f"Comparing turns - Current: {current_turn}, Last: {last_turn}")
                 if current_turn <= last_turn:
-                    ic(f"Current turn {current_turn} is not newer than last turn {last_turn}, retrying...")
                     sleep(0.5)
                     continue
-                
                 if not last_response.text.strip():
-                    ic("Response is empty, waiting for content...")
                     sleep(0.5)
                     continue
-
-                ic(last_response.text.strip())
-                ic("Found newer turn, breaking loop")
                 break
-
             except Exception as e:
-                ic(f"Error getting response: {str(e)}")
-                ic(f"Exception type: {type(e)}")
                 sleep(0.5)
                 continue
             finally:
                 self._busy.clear()
 
         if time.time() - start_time >= timeout:
-            raise ChatGPTAutoException(f"Timeout after {timeout} seconds while waiting for response")
+            raise ChatGPTAutoException(
+                f"Timeout after {timeout} seconds while waiting for response"
+            )
 
         if not last_response:
             raise ChatGPTAutoException("Failed to get valid response")
 
-        with open(Paths.URLS, 'r') as file:
+        with open(Paths.URLS, "r") as file:
             urls = json.load(file)
             urls[self.instance_name]["last_response_data_testid"] = new_data_testid
-        with open(Paths.URLS, 'w') as file:
+        with open(Paths.URLS, "w") as file:
             json.dump(urls, file, indent=4)
 
         code_elements = last_response.find_elements(By.TAG_NAME, "code") or []
         code_found = []
 
         if not isinstance(code_elements, list):
-            ic("Code elements is not a list")
             return last_response.text
-        
+
         for code in code_elements:
             try:
                 class_list = code.get_attribute("class")
                 if not class_list:
                     continue
-                    
+
                 if "language-bash" in class_list:
                     bash = code.text.strip()
                     code_found.append(("language-bash", bash))
@@ -316,10 +289,9 @@ class ChatGPTAuto:
                     python = code.text
                     code_found.append(("language-python", python))
             except Exception as e:
-                ic(f"Error processing code element: {str(e)}")
+
                 continue
 
-        ic("Retrieving response")
         return code_found if code_found else last_response.text
 
     def _get_stable_output_from_script(
@@ -367,7 +339,7 @@ class ChatGPTAuto:
         if text_length > 100_000:
             self._wait_while_busy(1)
             self._busy.set()
-            ic("Starting new chat")
+
             self._wait.until(
                 EC.element_to_be_clickable((By.XPATH, WebElements.NEW_CHAT_BUTTON))
             ).click()
@@ -396,13 +368,13 @@ class ChatGPTAuto:
                 try:
                     self.driver.refresh()
                 except TimeoutException:
-                    ic("Timeout when refreshing")
+
                     break
                 continue
 
             if not is_generating_response:
                 self._wait_while_busy(1)
-                ic("Cleaning up")
+
                 self._busy.set()
                 self.driver.execute_script(Scripts.CLEAN_UP_PAGE)
                 self._busy.clear()
